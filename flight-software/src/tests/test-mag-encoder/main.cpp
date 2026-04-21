@@ -2,7 +2,7 @@
 #include <SPI.h>
 
 
-#define CS_PIN 4   // ⚠️ change to your actual CS pin
+#define CS_PIN 4   //  change to your actual CS pin
 
 uint16_t readAngleRaw() {
   uint16_t command = 0xFFFF;  // NOP to trigger read
@@ -25,7 +25,7 @@ void setup() {
   pinMode(CS_PIN, OUTPUT);
   digitalWrite(CS_PIN, HIGH);
 
-  SPI.begin(SCK, MISO, MOSI);
+  SPI.begin(SCK, 21, 19);
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE1)); // AS5048A = MODE1
 
   Serial.println("AS5048A SPI test starting...");
@@ -41,5 +41,5 @@ void loop() {
   Serial.print("\tAngle (deg): ");
   Serial.println(angle_deg);
 
-  delay(100);
+  delay(10);
 }
