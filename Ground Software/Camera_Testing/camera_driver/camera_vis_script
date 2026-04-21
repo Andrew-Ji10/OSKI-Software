@@ -1,0 +1,74 @@
+import serial
+import struct
+import numpy as np
+import cv2
+
+PORT = "COM13"
+BAUD = 115200
+HEADER = b"IMG"
+
+
+def read_exact(ser, n):
+    data = bytearray()
+    while len(data) < n:
+        chunk = ser.read(n - len(data))
+        if not chunk:
+            raise TimeoutError(f"Timed out waiting for {n} bytes")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def find_header(ser):
+    buf = bytearray()
+
+    while True:
+        b = ser.read(1)
+        if not b:
+            continue
+
+        buf += b
+        if len(buf) > len(HEADER):
+            buf = buf[-len(HEADER):]
+
+        if bytes(buf) == HEADER:
+            return
+
+
+def main():
+    print(f"Opening {PORT} @ {BAUD}")
+    with serial.Serial(PORT, BAUD, timeout=2) as ser:
+        ser.reset_input_buffer()
+
+        while True:
+            find_header(ser)
+
+            raw_len = read_exact(ser, 4)
+            (img_len,) = struct.unpack("<I", raw_len)
+
+            if img_len <= 0 or img_len > 500000:
+                print(f"Bad length: {img_len}")
+                continue
+
+            jpeg_bytes = read_exact(ser, img_len)
+
+            # Decode JPEG → OpenCV image
+            arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                print("Decode failed")
+                continue
+
+            # Show in persistent window
+            cv2.imshow("UART Camera", frame)
+
+            # Press 'q' or ESC to quit
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27 or key == ord('q'):
+                break
+
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
