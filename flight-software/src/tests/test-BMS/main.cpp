@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <math.h>
 #include "BQ76905.h"
 
 #define SDA_PIN 18
@@ -7,7 +8,24 @@
 #define I2C_HZ  100000
 
 #define SHUNT_MOHM   10.0f
-#define VCELL_MODE_4S 0x04   // per BQ7690x SDG, 4-cell config
+#define VCELL_MODE_4S 0x04   // 4-cell config
+
+// TS thermistor conversion — Panasonic ERT-J1VG103FA on internal 20 kΩ pull-up.
+// Ratiometric mode: V_REG18 cancels, so ratio = counts × (5/3) / 32768
+// (BQ76905 TRM §5.4: full-scale = V_REG18 × 5/3 over 15-bit unsigned range).
+static constexpr float kTs_Rpullup = 20000.0f; // Ω, internal trimmed pull-up (TRM §5.4)
+static constexpr float kNtc_R0     = 10000.0f; // Ω at 25 °C
+static constexpr float kNtc_T0_K   = 298.15f;  // 25 °C in K
+static constexpr float kNtc_Beta   = 3380.0f;  // K, ERT-J1VG103FA B25/50
+
+// Returns NaN for out-of-range counts (open/shorted thermistor).
+static float tsCountsToC(int16_t counts) {
+    float ratio = (float)counts * (5.0f / 3.0f) / 32768.0f;
+    if (ratio <= 0.0f || ratio >= 1.0f) return NAN;
+    float r_ntc = kTs_Rpullup * ratio / (1.0f - ratio);
+    float t_k   = 1.0f / (1.0f / kNtc_T0_K + logf(r_ntc / kNtc_R0) / kNtc_Beta);
+    return t_k - 273.15f;
+}
 
 BQ76905 bms;
 
@@ -85,28 +103,24 @@ void setup() {
 void loop() {
     Serial.println("---");
 
-    // In Vcell Mode = 4, physical cells map to BMS register cells 1, 2, 4, 5.
-    // Register cell 3 (VC3B-VC2) is the skipped position and reads ~0 if the
-    // PCB short is good — ignore it for cell sums and protections.
-    static const uint8_t kPhysicalToReg[4] = {1, 2, 4, 5};
+    // In Vcell Mode = 4, physical cells map to BMS register cells 1, 2, 3, 4. (Vcell mode must be 4 tho)
 
     uint32_t cell_sum_mv = 0;
-    for (uint8_t i = 0; i < 4; i++) {
-        uint8_t reg_idx = kPhysicalToReg[i];
+    for (uint8_t i = 1; i < 5; i++) {
         uint16_t mv = 0;
-        if (bms.readCellVoltage_mV(reg_idx, mv)) {
-            Serial.printf("phys cell %u  (reg %u): %u mV\n", i + 1, reg_idx, mv);
+        if (bms.readCellVoltage_mV(i, mv)) {
+            Serial.printf("phys cell %u  (reg %u): %u mV\n", i, i, mv);
             cell_sum_mv += mv;
         } else {
-            Serial.printf("phys cell %u  (reg %u): read fail\n", i + 1, reg_idx);
+            Serial.printf("phys cell %u  (reg %u): read fail\n", i, i);
         }
     }
 
-    uint16_t skipped_mv = 0;
-    if (bms.readCellVoltage_mV(3, skipped_mv)) {
-        Serial.printf("(skipped reg 3 / VC3B-VC2): %u mV  [should be ~0]\n",
-                      skipped_mv);
-    }
+    // uint16_t skipped_mv = 0;
+    // if (bms.readCellVoltage_mV(5, skipped_mv)) {
+    //     Serial.printf("(skipped reg 5): %u mV\n",
+    //                   skipped_mv);
+    // }
 
     uint16_t stack_mv = 0;
     if (bms.readStackVoltage_mV(stack_mv)) {
@@ -129,10 +143,14 @@ void loop() {
 
     int16_t ts_raw = 0;
     if (bms.readTsRaw(ts_raw)) {
-        // Raw ADC counts; needs a thermistor curve to convert to °C.
-        Serial.printf("TS raw:   %d counts\n", ts_raw);
+        float ts_c = tsCountsToC(ts_raw);
+        if (isnan(ts_c)) {
+            Serial.printf("TS:       %d counts  (out of range — check divider config)\n", ts_raw);
+        } else {
+            Serial.printf("TS:       %.1f C  (%d counts)\n", ts_c, ts_raw);
+        }
     } else {
-        Serial.println("TS raw:   read fail");
+        Serial.println("TS:       read fail");
     }
 
     delay(1000);
