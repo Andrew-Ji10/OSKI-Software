@@ -2,12 +2,12 @@
 #include <SPI.h>
 #include <LoRa.h>
 
-#define LORA_SCK   18
-#define LORA_MISO  19
-#define LORA_MOSI  11
+#define LORA_SCK   7
+#define LORA_MISO  21
+#define LORA_MOSI  19
 #define LORA_CS     5
-#define LORA_RST   14
-#define LORA_IRQ   21
+#define LORA_RST   4
+#define LORA_IRQ   8
 
 volatile bool gotPacket = false;
 

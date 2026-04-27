@@ -1,12 +1,12 @@
 #include <Arduino.h>
-#include <Common.h>
-#include <BMS.h>
-#include <IMU.h>
-#include <GPS.h>
-#include <RadioComms.h>
-#include <CAM.h>
-#include <Housekeeping.h>
-#include <ADCS.h>
+#include "Common.h"
+#include "BMS.h"
+#include "IMU.h"
+#include "GPS.h"
+#include "RadioComms.h"
+#include "CAM.h"
+#include "Housekeeping.h"
+#include "ADCS.h"
 
 // Common files are included here, as well as specific files for this board
 
@@ -67,8 +67,15 @@ But this means the main.cpp file is pretty light, and the other files are doing 
 (Means code is modular and related code is close together)
 */
 
-void ping(Comms::Packet &packet) {
-  Serial.println("Received ping command!");
+void ping(Packet packet) {
+  uint32_t arg = RadioComms::packetGetUint32(&packet, 0);
+  Serial.printf("Received ping  arg: %lu\n", arg);
+  Packet response;
+  response.id = CMD_PING;
+  response.length = 0;
+  RadioComms::packetAddUint32(&response, arg);
+  RadioComms::packetAddUint32(&response, 42);
+  RadioComms::emitPacket(&response);
 }
 
 void setup() {
@@ -83,7 +90,7 @@ void setup() {
   Housekeeping::init();
 
   // This way, RadioComms doesn't need to #include all other files to deal with commands
-  RadioComms.registerCallback(CMD_PING, ping);
+  RadioComms::registerCallback(CMD_PING, ping);
 
 
   while(1) {
