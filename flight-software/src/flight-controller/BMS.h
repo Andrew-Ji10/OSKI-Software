@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 namespace BMS {
-  inline void init() {}
-  inline uint32_t task_readBMS() { return 1000 * 1000; }
+  void init();
+  uint32_t task_sendBMSTelem();
 }
 #endif

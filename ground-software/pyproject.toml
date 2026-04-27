@@ -1,0 +1,19 @@
+[tool.poetry]
+package-mode = false
+name = "oski-ground-station"
+version = "0.1.0"
+description = "OSKI satellite ground station — telemetry display and InfluxDB logger"
+authors = ["Nihal Singh Gulati <nihalsgulati@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pyserial = "^3.5"
+influxdb-client = "^1.43"
+python-dotenv = "^1.0"
+
+[tool.poetry.scripts]
+oski-gs = "ground_station:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

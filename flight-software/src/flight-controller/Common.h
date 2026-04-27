@@ -8,6 +8,7 @@
 #define CMD_ADCS_SETPOINT 2
 
 #define HSK_TELEMETRY 100
+#define BMS_TELEMETRY 101
 // TODO MORE IDs
 
 struct Task {
