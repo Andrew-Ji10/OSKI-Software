@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 namespace CAM {
-  inline void init() {}
+  void init();
+  uint32_t task_processCamera();
 }
 #endif

@@ -46,14 +46,18 @@ DEPLOY_TIMEOUT_S = 6.0   # seconds before a sent deploy is marked NO RETURN PACK
 RESCAN_INTERVAL = 3.0   # seconds between port scans when disconnected
 
 # Packet IDs — must match Common.h
-CMD_PING      = 0
-CMD_DEPLOY    = 3
-BMS_TELEMETRY = 101
+CMD_PING       = 0
+CMD_TAKE_PHOTO = 1
+CMD_DEPLOY     = 3
+BMS_TELEMETRY  = 101
+CAM_IMAGE_META = 200
+CAM_IMAGE_DATA = 201
 
 MEAS_NAME = {
-    CMD_PING:      "ping",
-    CMD_DEPLOY:    "deploy",
-    BMS_TELEMETRY: "bms",
+    CMD_PING:       "ping",
+    CMD_TAKE_PHOTO: "take_photo",
+    CMD_DEPLOY:     "deploy",
+    BMS_TELEMETRY:  "bms",
 }
 
 # LoRa addressing — must match ground station FW
@@ -155,10 +159,11 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     curses.init_pair(4, curses.COLOR_RED,    curses.COLOR_BLACK)
 
     # log is a list of [text, color_pair] — mutable so ping lines can be updated
-    log       = []
-    input_buf = ""
-    pkt_q     = queue.Queue()
-    cmd_q     = queue.Queue()
+    log           = []
+    input_buf     = ""
+    pkt_q         = queue.Queue()
+    cmd_q         = queue.Queue()
+    serial_status = ["scanning…"]  # mutable so serial_thread can update it
 
     # pending_pings: arg -> (log_idx, sent_time)
     pending_pings  = {}
@@ -166,6 +171,12 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     pending_deploy = None
     ping_arg       = 0
     last_ping_time = 0.0  # trigger first ping immediately
+
+    # image reassembly state
+    img_chunks       = {}   # seq (int) -> bytes
+    img_total        = 0    # expected chunk count
+    img_expected_len = 0    # expected byte count from META packet
+    img_log_idx      = None # index in log for in-place progress updates
 
     def serial_thread():
         port = initial_port
@@ -175,6 +186,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             if port is None:
                 if not disconnected:
                     pkt_q.put(("# No Feather V2 connected — scanning…", 2))
+                    serial_status[0] = "scanning…"
                     disconnected = True
                 time.sleep(RESCAN_INTERVAL)
                 port = find_feather()
@@ -185,6 +197,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
 
             try:
                 with serial.Serial(port, BAUD, timeout=1) as ser:
+                    serial_status[0] = f"connected ({port})"
                     while True:
                         line = ser.readline().decode("utf-8", errors="replace").strip()
                         if line:
@@ -193,15 +206,17 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             ser.write((cmd_q.get_nowait() + "\n").encode())
             except PermissionError:
                 pkt_q.put((f"# Cannot claim {port} — port in use or permission denied. Retrying…", 4))
+                serial_status[0] = "permission denied"
                 time.sleep(RESCAN_INTERVAL)
             except serial.SerialException:
+                serial_status[0] = "disconnected"
                 port = None
 
     threading.Thread(target=serial_thread, daemon=True).start()
 
     while True:
         h, w = stdscr.getmaxyx()
-        log_start = 1 if influx_status else 0
+        log_start = 1
         log_h = h - 2 - log_start
 
         # drain queue
@@ -237,6 +252,46 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             else:
                                 log[idx][0] = f"[{ts}] DEPLOY — invalid command  RSSI={rssi} SNR={snr}"
                                 log[idx][1] = 4  # red
+                        elif pkt_id == CMD_TAKE_PHOTO:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            if len(raw) >= 1 and raw[0] == 0:
+                                log.append([f"[{ts}] PHOTO ACK — triggered  RSSI={rssi} SNR={snr}", 1])
+                            else:
+                                log.append([f"[{ts}] PHOTO ACK — busy/error  RSSI={rssi} SNR={snr}", 4])
+                        elif pkt_id == CAM_IMAGE_META and len(raw) >= 6:
+                            img_expected_len = struct.unpack_from("<I", raw, 0)[0]
+                            img_total        = struct.unpack_from("<H", raw, 4)[0]
+                            img_chunks       = {}
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            log.append([f"[{ts}] IMG: 0/{img_total} chunks  ({img_expected_len} B expected)…", 3])
+                            img_log_idx = len(log) - 1
+                        elif pkt_id == CAM_IMAGE_DATA and len(raw) >= 4:
+                            seq   = struct.unpack_from("<H", raw, 0)[0]
+                            total = struct.unpack_from("<H", raw, 2)[0]
+                            img_chunks[seq] = raw[4:]
+                            received = len(img_chunks)
+                            if img_log_idx is not None:
+                                ts = log[img_log_idx][0][1:9]
+                                log[img_log_idx][0] = (f"[{ts}] IMG: {received}/{total} chunks"
+                                                       f"  ({img_expected_len} B expected)…")
+                            if received == total:
+                                assembled = b"".join(img_chunks[i] for i in range(total))
+                                os.makedirs("../images", exist_ok=True)
+                                fname = os.path.join("../images", f"image_{datetime.now().strftime('%H%M%S')}.jpg")
+                                try:
+                                    with open(fname, "wb") as f:
+                                        f.write(assembled)
+                                    if img_log_idx is not None:
+                                        ts = log[img_log_idx][0][1:9]
+                                        log[img_log_idx][0] = (f"[{ts}] IMG: saved {len(assembled)} B"
+                                                               f" → {fname}")
+                                        log[img_log_idx][1] = 1  # green
+                                except OSError as e:
+                                    if img_log_idx is not None:
+                                        log[img_log_idx][0] = f"[{ts}] IMG: save failed — {e}"
+                                        log[img_log_idx][1] = 4  # red
+                                img_chunks   = {}
+                                img_log_idx  = None
                         else:
                             log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
 
@@ -278,13 +333,19 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
 
         # draw status bar + log
         stdscr.erase()
-        if influx_status:
-            status_cp = 1 if influx_status == "connected" else 4
-            status_text = f" InfluxDB: {influx_status}"
-            try:
-                stdscr.addstr(0, 0, status_text.ljust(w - 1)[:w - 1], curses.color_pair(status_cp))
-            except curses.error:
-                pass
+        try:
+            stdscr.addstr(0, 0, " " * (w - 1), curses.color_pair(2))
+            serial_cp = 1 if serial_status[0].startswith("connected") else (3 if serial_status[0] == "scanning…" else 4)
+            serial_text = f" Serial: {serial_status[0]}"
+            stdscr.addstr(0, 0, serial_text[:w - 1], curses.color_pair(serial_cp))
+            if influx_status:
+                influx_cp = 1 if influx_status == "connected" else 4
+                influx_text = f"  InfluxDB: {influx_status}"
+                col = len(serial_text)
+                if col + len(influx_text) < w - 1:
+                    stdscr.addstr(0, col, influx_text, curses.color_pair(influx_cp))
+        except curses.error:
+            pass
         for i, (text, cp) in enumerate(log[-log_h:]):
             try:
                 stdscr.addstr(log_start + i, 0, text[:w - 1], curses.color_pair(cp))
@@ -318,6 +379,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     cmd_q.put(build_uplink(CMD_DEPLOY))
                     log.append([f"[{ts}] DEPLOY → …", 3])
                     pending_deploy = (len(log) - 1, time.time())
+                elif cmd.lower() == "photo":
+                    cmd_q.put(build_uplink(CMD_TAKE_PHOTO))
+                    log.append([f"[{ts}] PHOTO CMD sent", 3])
                 else:
                     log.append([f">> {cmd}", 3])
             input_buf = ""

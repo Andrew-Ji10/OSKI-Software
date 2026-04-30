@@ -57,14 +57,17 @@ uint8_t deployState = 0; // 0 default, 1 = waiting for 30s, 2 = burning burnwire
 uint32_t task_autoDeploy() {
   if (deployState == 0 && autoDeploy) {
     deployState = 1;
+    Serial.println("Auto-deploy triggered, waiting for 30 seconds...");
     return 30 * 1000 * 1000; // wait for 30 seconds
   } else if (deployState == 1) {
     digitalWrite(DEPLOY_CTRL, HIGH); // start burnwire current
     deployState = 2;
+    Serial.println("Burnwire current started");
     return deployTime * 1000 * 1000; // burn for specified time
   } else if (deployState == 2) {
     digitalWrite(DEPLOY_CTRL, LOW); // stop burnwire current
     deployState = 0;
+    Serial.println("Burnwire off.");
     return 0; // done, disable task
   } else {
     return 0; // do nothing, disable task
@@ -80,7 +83,8 @@ Task taskTable[] = {
   {GPS::task_readGPS, 0, true},
   {BMS::task_sendBMSTelem, 0, true},
   {Housekeeping::task_sendHSK, 0, true},
-  {ADCS::task_runADCS, 0, true}
+  {ADCS::task_runADCS, 0, true},
+  {CAM::task_processCamera, 0, true}
 };
 
 #define TASK_COUNT (sizeof(taskTable) / sizeof (struct Task))
@@ -112,8 +116,10 @@ void deployTrigger(Packet packet) {
     taskTable[0].enabled = true;
     taskTable[0].nexttime = micros() + 100;
     RadioComms::packetAddUint8(&ack, 0); // ACK: triggered
+    Serial.println("Deployment triggered!");
   } else {
     RadioComms::packetAddUint8(&ack, 1); // invalid: already deploying / done
+    Serial.println("Deployment command received but already deploying or done.");
   }
   RadioComms::emitPacket(&ack);
 }
