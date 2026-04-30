@@ -10,6 +10,14 @@
 
 // Common files are included here, as well as specific files for this board
 
+// Definitions
+#define LED1 3
+#define LED2 46
+
+#define DEPLOY_CTRL 18
+static const uint8_t deployTime = 7; // seconds of burnwire current 
+static const bool autoDeploy = false; // whether to automatically deploy at T30
+
 /**
  * @brief This code implements a task system that allows for the execution of multiple tasks at different intervals.
  * 
@@ -26,8 +34,6 @@
  * The `loop()` function is left empty as it is not used in this code.
  */
 
-#define LED1 3
-#define LED2 46
 void initLEDs() {
     // initialize LEDs here
     pinMode(LED1, OUTPUT);
@@ -47,8 +53,27 @@ uint32_t task_helloWorld() {
   return 1000 * 1000; // this task will run every second
 }
 
+uint8_t deployState = 0; // 0 default, 1 = waiting for 30s, 2 = burning burnwire
+uint32_t task_autoDeploy() {
+  if (deployState == 0 && autoDeploy) {
+    deployState = 1;
+    return 30 * 1000 * 1000; // wait for 30 seconds
+  } else if (deployState == 1) {
+    digitalWrite(DEPLOY_CTRL, HIGH); // start burnwire current
+    deployState = 2;
+    return deployTime * 1000 * 1000; // burn for specified time
+  } else if (deployState == 2) {
+    digitalWrite(DEPLOY_CTRL, LOW); // stop burnwire current
+    deployState = 0;
+    return 0; // done, disable task
+  } else {
+    return 0; // do nothing, disable task
+  }
+}
+
 Task taskTable[] = {
   //{task_helloWorld, 0, true},
+  {task_autoDeploy, 0, true}, // must be first
   {task_blinkLEDs, 0, true},
   // Example tasks, please flesh out with real tasks and remove these placeholders.
   {IMU::task_readIMU, 0, true},
@@ -78,8 +103,26 @@ void ping(Packet packet) {
   RadioComms::emitPacket(&response);
 }
 
+void deployTrigger(Packet packet) {
+  Packet ack;
+  ack.id = CMD_DEPLOY;
+  ack.length = 0;
+  if (deployState == 0) {
+    deployState = 1;
+    taskTable[0].enabled = true;
+    taskTable[0].nexttime = micros() + 100;
+    RadioComms::packetAddUint8(&ack, 0); // ACK: triggered
+  } else {
+    RadioComms::packetAddUint8(&ack, 1); // invalid: already deploying / done
+  }
+  RadioComms::emitPacket(&ack);
+}
+
 void setup() {
   // setup stuff here
+  pinMode(DEPLOY_CTRL, OUTPUT);
+  digitalWrite(DEPLOY_CTRL, LOW);
+
   Serial.begin(115200);
   initLEDs();
   RadioComms::init();
@@ -91,6 +134,8 @@ void setup() {
 
   // This way, RadioComms doesn't need to #include all other files to deal with commands
   RadioComms::registerCallback(CMD_PING, ping);
+  RadioComms::registerCallback(CMD_DEPLOY, deployTrigger);
+
 
 
   while(1) {

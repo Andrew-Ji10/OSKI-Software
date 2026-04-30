@@ -14,7 +14,6 @@ Environment variables:
 
 import os
 import sys
-import re
 import time
 import struct
 import curses
@@ -41,17 +40,29 @@ BAUD          = 115200
 FEATHER_V2_VID = 0x1A86  # WCH CH340 (Feather ESP32 V2)
 ESP32_S3_VID   = 0x303A  # Espressif native USB (FC S3 DevKitC)
 
-PING_TIMEOUT_S  = 4.0   # seconds before a sent ping is marked NO ACK
+PING_INTERVAL_S  = 5.0   # seconds between auto-pings
+PING_TIMEOUT_S   = 4.0   # seconds before a sent ping is marked NO ACK
+DEPLOY_TIMEOUT_S = 6.0   # seconds before a sent deploy is marked NO RETURN PACKET
 RESCAN_INTERVAL = 3.0   # seconds between port scans when disconnected
 
 # Packet IDs — must match Common.h
 CMD_PING      = 0
+CMD_DEPLOY    = 3
 BMS_TELEMETRY = 101
 
 MEAS_NAME = {
     CMD_PING:      "ping",
+    CMD_DEPLOY:    "deploy",
     BMS_TELEMETRY: "bms",
 }
+
+# LoRa addressing — must match ground station FW
+FC_ADDR    = 0xAA
+LOCAL_ADDR = 0xBB
+
+def build_uplink(pkt_id, data=b""):
+    """Return a hex string the ground station FW will relay verbatim over LoRa."""
+    return (bytes([FC_ADDR, LOCAL_ADDR, pkt_id, len(data)]) + data).hex()
 
 # ── Serial port detection ───────────────────────────────────────────────────────
 
@@ -108,6 +119,10 @@ def influx_fields(pkt_id, raw):
 
 # ── InfluxDB helpers ────────────────────────────────────────────────────────────
 
+def _is_connection_refused(exc):
+    s = str(exc)
+    return "Connection refused" in s or "NewConnectionError" in s
+
 def ensure_bucket(client):
     api = client.buckets_api()
     existing = [b.name for b in api.find_buckets().buckets]
@@ -130,9 +145,7 @@ def write_point(write_api, pkt_id, raw, rssi, snr):
 # ── Curses UI ───────────────────────────────────────────────────────────────────
 # Color pairs: 1=green (data), 2=cyan (system), 3=yellow (ping/cmd), 4=red (no ack)
 
-SENT_PING_RE = re.compile(r"# Sent CMD_PING arg=(\d+)")
-
-def run_ui(stdscr, initial_port, write_api):
+def run_ui(stdscr, initial_port, write_api, influx_status):
     curses.curs_set(1)
     stdscr.nodelay(True)
     curses.start_color()
@@ -148,7 +161,11 @@ def run_ui(stdscr, initial_port, write_api):
     cmd_q     = queue.Queue()
 
     # pending_pings: arg -> (log_idx, sent_time)
-    pending_pings = {}
+    pending_pings  = {}
+    # pending_deploy: (log_idx, sent_time) or None
+    pending_deploy = None
+    ping_arg       = 0
+    last_ping_time = 0.0  # trigger first ping immediately
 
     def serial_thread():
         port = initial_port
@@ -184,7 +201,8 @@ def run_ui(stdscr, initial_port, write_api):
 
     while True:
         h, w = stdscr.getmaxyx()
-        log_h = h - 2
+        log_start = 1 if influx_status else 0
+        log_h = h - 2 - log_start
 
         # drain queue
         try:
@@ -195,56 +213,81 @@ def run_ui(stdscr, initial_port, write_api):
                     log.append([line, color])
 
                 else:
-                    # check for sent-ping line from Arduino
-                    m = SENT_PING_RE.match(line)
-                    if m:
-                        arg = int(m.group(1))
-                        ts  = datetime.now().strftime("%H:%M:%S")
-                        log.append([f"[{ts}] PING #{arg} → …", 3])
-                        pending_pings[arg] = (len(log) - 1, time.time())
+                    parsed = parse_data_line(line)
+                    if parsed:
+                        pkt_id, raw, rssi, snr = parsed
 
-                    else:
-                        parsed = parse_data_line(line)
-                        if parsed:
-                            pkt_id, raw, rssi, snr = parsed
-
-                            if pkt_id == CMD_PING and len(raw) >= 8:
-                                echoed, val = struct.unpack_from("<II", raw, 0)
-                                if echoed in pending_pings:
-                                    idx, _ = pending_pings.pop(echoed)
-                                    ts = log[idx][0][1:9]  # reuse original HH:MM:SS
-                                    log[idx][0] = (f"[{ts}] PING #{echoed} → "
-                                                   f"val={val}  RSSI={rssi} SNR={snr}")
-                                    log[idx][1] = 1  # green on ack
-                                else:
-                                    log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
+                        if pkt_id == CMD_PING and len(raw) >= 8:
+                            echoed, val = struct.unpack_from("<II", raw, 0)
+                            if echoed in pending_pings:
+                                idx, _ = pending_pings.pop(echoed)
+                                ts = log[idx][0][1:9]  # reuse original HH:MM:SS
+                                log[idx][0] = (f"[{ts}] PING #{echoed} → "
+                                               f"val={val}  RSSI={rssi} SNR={snr}")
+                                log[idx][1] = 1  # green on ack
                             else:
                                 log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
-
-                            if write_api:
-                                try:
-                                    write_point(write_api, pkt_id, raw, rssi, snr)
-                                except Exception as e:
-                                    log.append([f"# InfluxDB error: {e}", 2])
+                        elif pkt_id == CMD_DEPLOY and pending_deploy is not None:
+                            idx, _ = pending_deploy
+                            pending_deploy = None
+                            ts = log[idx][0][1:9]
+                            if len(raw) >= 1 and raw[0] == 0:
+                                log[idx][0] = f"[{ts}] DEPLOY ACK — sequence triggered  RSSI={rssi} SNR={snr}"
+                                log[idx][1] = 1  # green
+                            else:
+                                log[idx][0] = f"[{ts}] DEPLOY — invalid command  RSSI={rssi} SNR={snr}"
+                                log[idx][1] = 4  # red
                         else:
-                            log.append([line, 2])
+                            log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
+
+                        if write_api:
+                            try:
+                                write_point(write_api, pkt_id, raw, rssi, snr)
+                            except Exception as e:
+                                if _is_connection_refused(e):
+                                    influx_status = "no influxd running"
+                                    write_api = None
+                                else:
+                                    log.append([f"# InfluxDB error: {e}", 2])
+                    else:
+                        log.append([line, 2])
 
         except queue.Empty:
             pass
 
-        # expire timed-out pings
+        # auto-ping + expire timed-out pings / deploys
         now = time.time()
+        if now - last_ping_time >= PING_INTERVAL_S:
+            cmd_q.put(build_uplink(CMD_PING, struct.pack("<I", ping_arg)))
+            ts = datetime.now().strftime("%H:%M:%S")
+            log.append([f"[{ts}] PING #{ping_arg} → …", 3])
+            pending_pings[ping_arg] = (len(log) - 1, now)
+            ping_arg += 1
+            last_ping_time = now
         for arg, (idx, sent_at) in list(pending_pings.items()):
             if now - sent_at > PING_TIMEOUT_S:
                 log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
                 log[idx][1] = 4  # red
                 del pending_pings[arg]
+        if pending_deploy is not None:
+            idx, sent_at = pending_deploy
+            if now - sent_at > DEPLOY_TIMEOUT_S:
+                log[idx][0] = log[idx][0].replace(" → …", " → NO RETURN PACKET")
+                log[idx][1] = 4  # red
+                pending_deploy = None
 
-        # draw log
+        # draw status bar + log
         stdscr.erase()
-        for row, (text, cp) in enumerate(log[-log_h:]):
+        if influx_status:
+            status_cp = 1 if influx_status == "connected" else 4
+            status_text = f" InfluxDB: {influx_status}"
             try:
-                stdscr.addstr(row, 0, text[:w - 1], curses.color_pair(cp))
+                stdscr.addstr(0, 0, status_text.ljust(w - 1)[:w - 1], curses.color_pair(status_cp))
+            except curses.error:
+                pass
+        for i, (text, cp) in enumerate(log[-log_h:]):
+            try:
+                stdscr.addstr(log_start + i, 0, text[:w - 1], curses.color_pair(cp))
             except curses.error:
                 pass
 
@@ -263,9 +306,20 @@ def run_ui(stdscr, initial_port, write_api):
         if ch == curses.KEY_RESIZE:
             pass
         elif ch in (curses.KEY_ENTER, 10, 13):
-            if input_buf.strip():
-                cmd_q.put(input_buf.strip())
-                log.append([f">> {input_buf}", 3])
+            cmd = input_buf.strip()
+            if cmd:
+                ts = datetime.now().strftime("%H:%M:%S")
+                if cmd.lower() == "ping":
+                    cmd_q.put(build_uplink(CMD_PING, struct.pack("<I", ping_arg)))
+                    log.append([f"[{ts}] PING #{ping_arg} → …", 3])
+                    pending_pings[ping_arg] = (len(log) - 1, time.time())
+                    ping_arg += 1
+                elif cmd.lower() == "deploy":
+                    cmd_q.put(build_uplink(CMD_DEPLOY))
+                    log.append([f"[{ts}] DEPLOY → …", 3])
+                    pending_deploy = (len(log) - 1, time.time())
+                else:
+                    log.append([f">> {cmd}", 3])
             input_buf = ""
         elif ch in (curses.KEY_BACKSPACE, 127, 8):
             input_buf = input_buf[:-1]
@@ -285,16 +339,25 @@ def main():
     print(f"Feather V2 on {port}")
 
     write_api = None
+    influx_status = ""
     if INFLUX_TOKEN:
-        client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
-        created = ensure_bucket(client)
-        print(f"InfluxDB bucket '{INFLUX_BUCKET}' {'created' if created else 'exists'}.")
-        write_api = client.write_api(write_options=SYNCHRONOUS)
+        try:
+            client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
+            created = ensure_bucket(client)
+            print(f"InfluxDB bucket '{INFLUX_BUCKET}' {'created' if created else 'exists'}.")
+            write_api = client.write_api(write_options=SYNCHRONOUS)
+            influx_status = "connected"
+        except Exception as e:
+            if _is_connection_refused(e):
+                print("no influxd running — InfluxDB logging disabled.")
+                influx_status = "no influxd running"
+            else:
+                raise
     else:
         print("INFLUX_TOKEN not set — InfluxDB logging disabled.")
 
     input("Press Enter to launch terminal UI…")
-    curses.wrapper(run_ui, port, write_api)
+    curses.wrapper(run_ui, port, write_api, influx_status)
 
 if __name__ == "__main__":
     main()

@@ -13,105 +13,62 @@
 static const byte LOCAL_ADDR = 0xBB;
 static const byte FC_ADDR    = 0xAA;
 
-static const int PING_INTERVAL_MS = 5000;
-
-long lastPingTime = 0;
-uint32_t pingArg = 0;
-
-void sendPacket(Packet *packet, byte dest);
-void onReceive(int packetSize);
-void printPacket(Packet *packet, byte sender, int rssi, float snr);
-
-static void addUint32(Packet *p, uint32_t v) {
-  p->data[p->length]   = v & 0xFF;
-  p->data[p->length+1] = v >> 8 & 0xFF;
-  p->data[p->length+2] = v >> 16 & 0xFF;
-  p->data[p->length+3] = v >> 24 & 0xFF;
-  p->length += 4;
-}
-
+String serialBuf = "";
 
 void setup() {
   Serial.begin(115200);
   while (!Serial);
-
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
-
-  pinMode(CS_PIN, OUTPUT);
-  pinMode(RESET_PIN, OUTPUT);
-  digitalWrite(RESET_PIN, LOW);
-  delay(10);
-
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, CS_PIN);
   LoRa.setPins(CS_PIN, RESET_PIN, G0);
-
   if (!LoRa.begin(915E6)) {
-    Serial.println("# LoRa init failed. Check your connections.");
+    Serial.println("# LoRa init failed.");
     while (true);
   }
-
   Serial.println("# Ground station ready.");
 }
 
 void loop() {
-  if (millis() - lastPingTime > PING_INTERVAL_MS) {
-    Packet ping;
-    ping.id = CMD_PING;
-    ping.length = 0;
-    addUint32(&ping, pingArg);
-    sendPacket(&ping, FC_ADDR);
-    Serial.printf("# Sent CMD_PING arg=%lu\n", pingArg);
-    pingArg++;
-    lastPingTime = millis();
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+  // Serial -> LoRa: relay hex-encoded bytes from host
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n') {
+      serialBuf.trim();
+      if (serialBuf.length() >= 2) {
+        LoRa.beginPacket();
+        for (int i = 0; i + 1 < (int)serialBuf.length(); i += 2) {
+          char hex[3] = { serialBuf[i], serialBuf[i + 1], '\0' };
+          LoRa.write((uint8_t)strtoul(hex, nullptr, 16));
+        }
+        LoRa.endPacket();
+        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      }
+      serialBuf = "";
+    } else {
+      serialBuf += c;
+    }
   }
 
-  onReceive(LoRa.parsePacket());
-}
-
-void sendPacket(Packet *packet, byte dest) {
-  if (packet->length > 251) return;
-  LoRa.beginPacket();
-  LoRa.write(dest);
-  LoRa.write(LOCAL_ADDR);
-  LoRa.write(packet->id);
-  LoRa.write(packet->length);
-  for (uint8_t i = 0; i < packet->length; i++) {
-    LoRa.write(packet->data[i]);
-  }
-  LoRa.endPacket();
-}
-
-void onReceive(int packetSize) {
+  // LoRa -> Serial: forward packet content as DATA line
+  int packetSize = LoRa.parsePacket();
   if (packetSize == 0) return;
 
-  int recipient  = LoRa.read();
-  byte sender    = LoRa.read();
-  uint8_t id     = LoRa.read();
-  uint8_t length = LoRa.read();
+  int     recipient = LoRa.read();
+  byte    sender    = LoRa.read();
+  uint8_t id        = LoRa.read();
+  uint8_t length    = LoRa.read();
 
   if (recipient != LOCAL_ADDR && recipient != 0xFF) {
     while (LoRa.available()) LoRa.read();
     return;
   }
 
-  Packet packet;
-  packet.id = id;
-  packet.length = 0;
-  for (uint8_t i = 0; i < length && LoRa.available(); i++) {
-    packet.data[i] = LoRa.read();
-    packet.length++;
-  }
+  uint8_t data[251];
+  uint8_t n = 0;
+  while (LoRa.available() && n < length) data[n++] = LoRa.read();
 
-  printPacket(&packet, sender, LoRa.packetRssi(), LoRa.packetSnr());
-}
-
-// DATA <id> <len> <byte0> <byte1> ... RSSI=<n> SNR=<n>
-void printPacket(Packet *packet, byte sender, int rssi, float snr) {
-  Serial.printf("DATA %d %d", packet->id, packet->length);
-  for (uint8_t i = 0; i < packet->length; i++) {
-    Serial.printf(" %02X", packet->data[i]);
-  }
-  Serial.printf(" RSSI=%d SNR=%.1f\n", rssi, snr);
+  Serial.printf("DATA %d %d", id, n);
+  for (uint8_t i = 0; i < n; i++) Serial.printf(" %02X", data[i]);
+  Serial.printf(" RSSI=%d SNR=%.1f\n", LoRa.packetRssi(), LoRa.packetSnr());
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
