@@ -25,6 +25,9 @@ void setup() {
     Serial.println("# LoRa init failed.");
     while (true);
   }
+  LoRa.setSpreadingFactor(7);
+  LoRa.setSignalBandwidth(500E3);
+  LoRa.setCodingRate4(5);
   Serial.println("# Ground station ready.");
 }
 

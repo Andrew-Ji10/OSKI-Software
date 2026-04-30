@@ -27,7 +27,11 @@ namespace RadioComms
         SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, CS_PIN);
         LoRa.setPins(CS_PIN, RESET_PIN, -1);
 
-        return LoRa.begin(915E6);
+        if (!LoRa.begin(915E6)) return false;
+        LoRa.setSpreadingFactor(7);
+        LoRa.setSignalBandwidth(500E3);
+        LoRa.setCodingRate4(5);
+        return true;
     }
 
     void registerCallback(uint8_t id, commFunction function) {
