@@ -81,7 +81,7 @@ Task taskTable[] = {
   // Example tasks, please flesh out with real tasks and remove these placeholders.
   {IMU::task_readIMU, 0, true},
   {GPS::task_readGPS, 0, true},
-  //{BMS::task_sendBMSTelem, 0, true},
+  {BMS::task_sendBMSTelem, 0, true},
   {Housekeeping::task_sendHSK, 0, true},
   {ADCS::task_runADCS, 0, true},
   {CAM::task_processCamera, 0, true}
