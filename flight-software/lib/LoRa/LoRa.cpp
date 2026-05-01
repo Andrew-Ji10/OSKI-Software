@@ -224,6 +224,8 @@ int LoRaClass::parsePacket(int size)
 {
   int packetLength = 0;
   int irqFlags = readRegister(REG_IRQ_FLAGS);
+  int opMode = readRegister(REG_OP_MODE);
+  int currentMode = opMode & 0x07;
 
   if (size > 0) {
     implicitHeaderMode();
@@ -250,9 +252,12 @@ int LoRaClass::parsePacket(int size)
     // set FIFO address to current RX address
     writeRegister(REG_FIFO_ADDR_PTR, readRegister(REG_FIFO_RX_CURRENT_ADDR));
 
-    // put in standby mode
-    idle();
-  } else if (readRegister(REG_OP_MODE) != (MODE_LONG_RANGE_MODE | MODE_RX_SINGLE)) {
+    // Stay in continuous RX when configured that way so tightly packed packets
+    // do not hit a standby gap between polls.
+    if (currentMode == MODE_RX_SINGLE) {
+      idle();
+    }
+  } else if (currentMode != MODE_RX_SINGLE && currentMode != MODE_RX_CONTINUOUS) {
     // not currently in RX mode
 
     // reset FIFO address

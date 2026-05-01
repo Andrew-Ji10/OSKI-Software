@@ -36,6 +36,7 @@ INFLUX_TOKEN  = os.getenv("INFLUX_TOKEN", "")
 INFLUX_ORG    = os.getenv("INFLUX_ORG",  "oski")
 INFLUX_BUCKET = "oskisat_telem"
 BAUD          = 115200
+AUTO_PING_ENABLED = False
 
 FEATHER_V2_VID = 0x1A86  # WCH CH340 (Feather ESP32 V2)
 ESP32_S3_VID   = 0x303A  # Espressif native USB (FC S3 DevKitC)
@@ -52,6 +53,12 @@ CMD_DEPLOY     = 3
 BMS_TELEMETRY  = 101
 CAM_IMAGE_META = 200
 CAM_IMAGE_DATA = 201
+CAM_IMAGE_DONE = 202
+CAM_NACK       = 203
+CAM_IMAGE_ACK  = 204
+
+FRAME_SYNC = b"\xA5\x5A"
+MAX_MISSING_SEQS_PER_NACK = 125
 
 MEAS_NAME = {
     CMD_PING:       "ping",
@@ -91,6 +98,42 @@ def parse_data_line(line):
     except (IndexError, ValueError):
         return None
 
+def extract_binary_frames(rx_buf):
+    frames = []
+    min_frame_len = 8
+
+    while True:
+        sync_idx = rx_buf.find(FRAME_SYNC)
+        if sync_idx < 0:
+            if len(rx_buf) > 1:
+                del rx_buf[:-1]
+            break
+        if sync_idx > 0:
+            del rx_buf[:sync_idx]
+        if len(rx_buf) < min_frame_len:
+            break
+
+        payload_len = rx_buf[3]
+        frame_len = min_frame_len + payload_len
+        if len(rx_buf) < frame_len:
+            break
+
+        frame = bytes(rx_buf[:frame_len])
+        checksum = sum(frame[2:-1]) & 0xFF
+        if checksum != frame[-1]:
+            del rx_buf[0]
+            continue
+
+        pkt_id = frame[2]
+        raw_len = frame[3]
+        rssi = struct.unpack_from("<h", frame, 4)[0]
+        snr = struct.unpack_from("<b", frame, 6)[0] / 4.0
+        raw = frame[7:7 + raw_len]
+        frames.append((pkt_id, raw, rssi, snr))
+        del rx_buf[:frame_len]
+
+    return frames
+
 def fmt_packet(pkt_id, raw, rssi, snr):
     ts = datetime.now().strftime("%H:%M:%S")
     if pkt_id == BMS_TELEMETRY and len(raw) >= 22:
@@ -103,6 +146,16 @@ def fmt_packet(pkt_id, raw, rssi, snr):
                 f"current={current} mA  "
                 f"intTemp={int_temp:.1f}°C  tsTemp={ts_temp:.1f}°C")
     return f"[{ts}] PKT id={pkt_id} len={len(raw)} {raw.hex()}"
+
+def fmt_img_progress(ts, received, total, expected_len, seq=None, chunk_len=None):
+    msg = f"[{ts}] IMG RX — {received}/{total} chunks received"
+    if expected_len:
+        msg += f"  ({expected_len} B expected)"
+    if seq is not None:
+        msg += f"  last seq={seq}"
+    if chunk_len is not None:
+        msg += f"  payload={chunk_len} B"
+    return msg
 
 def influx_fields(pkt_id, raw):
     if pkt_id == CMD_PING and len(raw) >= 8:
@@ -171,16 +224,22 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     pending_deploy = None
     ping_arg       = 0
     last_ping_time = 0.0  # trigger first ping immediately
+    pending_burst_request = None
+    active_burst = None
 
     # image reassembly state
     img_chunks       = {}   # seq (int) -> bytes
+    img_transfer_id  = None
     img_total        = 0    # expected chunk count
     img_expected_len = 0    # expected byte count from META packet
-    img_log_idx      = None # index in log for in-place progress updates
+    img_last_missing = None
+    img_have_new_chunks = False
+    img_last_nack_at = 0.0
 
     def serial_thread():
         port = initial_port
         disconnected = False
+        rx_buf = bytearray()
 
         while True:
             if port is None:
@@ -199,11 +258,14 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                 with serial.Serial(port, BAUD, timeout=1) as ser:
                     serial_status[0] = f"connected ({port})"
                     while True:
-                        line = ser.readline().decode("utf-8", errors="replace").strip()
-                        if line:
-                            pkt_q.put((line, None))
                         while not cmd_q.empty():
                             ser.write((cmd_q.get_nowait() + "\n").encode())
+                            ser.flush()
+                        chunk = ser.read(max(1, ser.in_waiting or 1))
+                        if chunk:
+                            rx_buf.extend(chunk)
+                            for parsed in extract_binary_frames(rx_buf):
+                                pkt_q.put((parsed, None))
             except PermissionError:
                 pkt_q.put((f"# Cannot claim {port} — port in use or permission denied. Retrying…", 4))
                 serial_status[0] = "permission denied"
@@ -228,7 +290,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     log.append([line, color])
 
                 else:
-                    parsed = parse_data_line(line)
+                    parsed = line if isinstance(line, tuple) else parse_data_line(line)
                     if parsed:
                         pkt_id, raw, rssi, snr = parsed
 
@@ -256,42 +318,107 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             ts = datetime.now().strftime("%H:%M:%S")
                             if len(raw) >= 1 and raw[0] == 0:
                                 log.append([f"[{ts}] PHOTO ACK — triggered  RSSI={rssi} SNR={snr}", 1])
+                                if pending_burst_request is not None:
+                                    if pending_burst_request["count"] > 1:
+                                        active_burst = {
+                                            "folder": pending_burst_request["folder"],
+                                            "count": pending_burst_request["count"],
+                                            "saved": 0,
+                                        }
+                                        log.append([f"[{ts}] PHOTO BURST — saving to {active_burst['folder']}", 2])
+                                    pending_burst_request = None
+                            elif len(raw) >= 1 and raw[0] == 2:
+                                log.append([f"[{ts}] PHOTO NACK — invalid photo count  RSSI={rssi} SNR={snr}", 4])
+                                pending_burst_request = None
                             else:
                                 log.append([f"[{ts}] PHOTO ACK — busy/error  RSSI={rssi} SNR={snr}", 4])
-                        elif pkt_id == CAM_IMAGE_META and len(raw) >= 6:
-                            img_expected_len = struct.unpack_from("<I", raw, 0)[0]
-                            img_total        = struct.unpack_from("<H", raw, 4)[0]
+                                pending_burst_request = None
+                        elif pkt_id == CAM_IMAGE_META and len(raw) >= 7:
+                            img_transfer_id  = raw[0]
+                            img_expected_len = struct.unpack_from("<I", raw, 1)[0]
+                            img_total        = struct.unpack_from("<H", raw, 5)[0]
                             img_chunks       = {}
+                            img_last_missing = None
+                            img_have_new_chunks = False
+                            img_last_nack_at = 0.0
                             ts = datetime.now().strftime("%H:%M:%S")
-                            log.append([f"[{ts}] IMG: 0/{img_total} chunks  ({img_expected_len} B expected)…", 3])
-                            img_log_idx = len(log) - 1
-                        elif pkt_id == CAM_IMAGE_DATA and len(raw) >= 4:
-                            seq   = struct.unpack_from("<H", raw, 0)[0]
-                            total = struct.unpack_from("<H", raw, 2)[0]
-                            img_chunks[seq] = raw[4:]
-                            received = len(img_chunks)
-                            if img_log_idx is not None:
-                                ts = log[img_log_idx][0][1:9]
-                                log[img_log_idx][0] = (f"[{ts}] IMG: {received}/{total} chunks"
-                                                       f"  ({img_expected_len} B expected)…")
-                            if received == total:
-                                assembled = b"".join(img_chunks[i] for i in range(total))
-                                os.makedirs("../images", exist_ok=True)
-                                fname = os.path.join("../images", f"image_{datetime.now().strftime('%H%M%S')}.jpg")
+                            log.append([f"[{ts}] IMG META — id={img_transfer_id} {img_total} chunks, {img_expected_len} B expected", 3])
+                            log.append([fmt_img_progress(ts, 0, img_total, img_expected_len), 3])
+                        elif pkt_id == CAM_IMAGE_DATA and len(raw) >= 5:
+                            transfer_id = raw[0]
+                            seq   = struct.unpack_from("<H", raw, 1)[0]
+                            total = struct.unpack_from("<H", raw, 3)[0]
+                            chunk = raw[5:]
+                            if img_transfer_id == transfer_id and total == img_total and seq < img_total:
+                                prev = img_chunks.get(seq)
+                                img_chunks[seq] = chunk
+                                if prev != chunk:
+                                    img_have_new_chunks = True
+                                received = len(img_chunks)
+                                ts = datetime.now().strftime("%H:%M:%S")
+                                log.append([fmt_img_progress(ts, received, total, img_expected_len, seq, len(chunk)), 3])
+                            else:
+                                ts = datetime.now().strftime("%H:%M:%S")
+                                log.append([f"[{ts}] IMG DROP — id={transfer_id} seq={seq}/{total} ignored", 4])
+                        elif pkt_id == CAM_IMAGE_DONE and len(raw) >= 1:
+                            transfer_id = raw[0]
+                            if transfer_id != img_transfer_id:
+                                ts = datetime.now().strftime("%H:%M:%S")
+                                log.append([f"[{ts}] IMG DONE — stale id={transfer_id}, current id={img_transfer_id}", 4])
+                                continue
+
+                            missing = [i for i in range(img_total) if i not in img_chunks]
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            if not missing:
+                                assembled = b"".join(img_chunks[i] for i in range(img_total))
+                                save_dir = "../images"
+                                if active_burst is not None and active_burst["saved"] < active_burst["count"]:
+                                    save_dir = active_burst["folder"]
+                                os.makedirs(save_dir, exist_ok=True)
+                                timestamp = datetime.now().strftime('%H%M%S')
+                                if active_burst is not None and active_burst["saved"] < active_burst["count"]:
+                                    index = active_burst["saved"] + 1
+                                    count = active_burst["count"]
+                                    fname = os.path.join(save_dir, f"image_{index:02d}_of_{count:02d}_{timestamp}.jpg")
+                                else:
+                                    fname = os.path.join(save_dir, f"image_{timestamp}.jpg")
                                 try:
                                     with open(fname, "wb") as f:
                                         f.write(assembled)
-                                    if img_log_idx is not None:
-                                        ts = log[img_log_idx][0][1:9]
-                                        log[img_log_idx][0] = (f"[{ts}] IMG: saved {len(assembled)} B"
-                                                               f" → {fname}")
-                                        log[img_log_idx][1] = 1  # green
+                                    if active_burst is not None and active_burst["saved"] < active_burst["count"]:
+                                        active_burst["saved"] += 1
+                                        if active_burst["saved"] >= active_burst["count"]:
+                                            active_burst = None
+                                    ts = datetime.now().strftime("%H:%M:%S")
+                                    log.append([f"[{ts}] IMG SAVED — all {img_total}/{img_total} chunks received, "
+                                                f"{len(assembled)} B written to {fname}", 1])
                                 except OSError as e:
-                                    if img_log_idx is not None:
-                                        log[img_log_idx][0] = f"[{ts}] IMG: save failed — {e}"
-                                        log[img_log_idx][1] = 4  # red
-                                img_chunks   = {}
-                                img_log_idx  = None
+                                    ts = datetime.now().strftime("%H:%M:%S")
+                                    log.append([f"[{ts}] IMG FAIL — could not save image: {e}", 4])
+                                cmd_q.put(build_uplink(CAM_IMAGE_ACK, bytes([img_transfer_id])))
+                                img_chunks = {}
+                                img_transfer_id = None
+                                img_total = 0
+                                img_expected_len = 0
+                                img_last_missing = None
+                                img_have_new_chunks = False
+                                img_last_nack_at = 0.0
+                            else:
+                                missing_key = tuple(missing)
+                                should_send_nack = (
+                                    img_last_missing != missing_key
+                                    or img_have_new_chunks
+                                    or time.time() - img_last_nack_at > 1.0
+                                )
+                                if should_send_nack:
+                                    nack_data = bytes([img_transfer_id]) + b"".join(
+                                        struct.pack("<H", s) for s in missing[:MAX_MISSING_SEQS_PER_NACK]
+                                    )
+                                    cmd_q.put(build_uplink(CAM_NACK, nack_data))
+                                    log.append([f"[{ts}] IMG NACK — missing seq={missing}", 4])
+                                    img_last_missing = missing_key
+                                    img_have_new_chunks = False
+                                    img_last_nack_at = time.time()
                         else:
                             log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
 
@@ -312,7 +439,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
 
         # auto-ping + expire timed-out pings / deploys
         now = time.time()
-        if now - last_ping_time >= PING_INTERVAL_S:
+        if AUTO_PING_ENABLED and now - last_ping_time >= PING_INTERVAL_S:
             cmd_q.put(build_uplink(CMD_PING, struct.pack("<I", ping_arg)))
             ts = datetime.now().strftime("%H:%M:%S")
             log.append([f"[{ts}] PING #{ping_arg} → …", 3])
@@ -379,9 +506,35 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     cmd_q.put(build_uplink(CMD_DEPLOY))
                     log.append([f"[{ts}] DEPLOY → …", 3])
                     pending_deploy = (len(log) - 1, time.time())
-                elif cmd.lower() == "photo":
-                    cmd_q.put(build_uplink(CMD_TAKE_PHOTO))
-                    log.append([f"[{ts}] PHOTO CMD sent", 3])
+                elif cmd.lower().startswith("photo"):
+                    parts = cmd.split()
+                    count = 1
+                    spacing_s = 0.0
+                    try:
+                        if len(parts) >= 2:
+                            count = int(parts[1])
+                        if len(parts) >= 3:
+                            spacing_s = float(parts[2])
+                    except ValueError:
+                        log.append([f"[{ts}] PHOTO CMD invalid — use `photo <count> <spacing_s>`", 4])
+                        input_buf = ""
+                        continue
+
+                    spacing_ms = int(round(spacing_s * 1000.0))
+                    if count <= 0 or spacing_ms < 0 or spacing_ms > 65535:
+                        log.append([f"[{ts}] PHOTO CMD invalid — count must be > 0 and spacing <= 65.535 s", 4])
+                    else:
+                        payload = bytes([count & 0xFF]) + struct.pack("<H", spacing_ms)
+                        cmd_q.put(build_uplink(CMD_TAKE_PHOTO, payload))
+                        if count > 1:
+                            burst_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            pending_burst_request = {
+                                "count": count,
+                                "folder": os.path.join("../images", f"burst_{burst_stamp}"),
+                            }
+                        else:
+                            pending_burst_request = None
+                        log.append([f"[{ts}] PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s", 3])
                 else:
                     log.append([f">> {cmd}", 3])
             input_buf = ""
@@ -401,6 +554,8 @@ def main():
         sys.exit(1)
 
     print(f"Feather V2 on {port}")
+    print(f"Auto-ping {'enabled' if AUTO_PING_ENABLED else 'disabled'} "
+          f"(set AUTO_PING_ENABLED=0 to disable).")
 
     write_api = None
     influx_status = ""

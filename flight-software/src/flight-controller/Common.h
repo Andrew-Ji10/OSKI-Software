@@ -11,8 +11,11 @@
 #define HSK_TELEMETRY 100
 #define BMS_TELEMETRY 101
 
-#define CAM_IMAGE_META 200  // total_size (uint32) + num_chunks (uint16)
-#define CAM_IMAGE_DATA 201  // seq (uint16) + total (uint16) + chunk bytes
+#define CAM_IMAGE_META 200  // transfer_id (uint8) + total_size (uint32) + num_chunks (uint16)
+#define CAM_IMAGE_DATA 201  // transfer_id (uint8) + seq (uint16) + total (uint16) + chunk bytes
+#define CAM_IMAGE_DONE 202  // transfer_id (uint8), sender finished this image
+#define CAM_NACK       203  // transfer_id (uint8) + missing seq list (uint16 each)
+#define CAM_IMAGE_ACK  204  // transfer_id (uint8), image fully received
 
 struct Task {
   uint32_t (*taskCall)();

@@ -29,7 +29,7 @@ void setup() {
 
     auto s = TimerCAM.Camera.sensor;
     s->set_pixformat(s, PIXFORMAT_JPEG);
-    s->set_framesize(s, FRAMESIZE_QVGA);  // 320x240
+    s->set_framesize(s, FRAMESIZE_HD);  // 320x240
     s->set_quality(s, 20);
     s->set_vflip(s, 1);
     s->set_hmirror(s, 0);

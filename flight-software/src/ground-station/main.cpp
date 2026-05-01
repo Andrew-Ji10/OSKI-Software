@@ -12,20 +12,57 @@
 
 static const byte LOCAL_ADDR = 0xBB;
 static const byte FC_ADDR    = 0xAA;
+static const uint32_t HOST_BAUD = 115200;
 static const size_t MAX_LORA_PAYLOAD = 251;
 static const size_t SERIAL_HEX_BUF_LEN = (MAX_LORA_PAYLOAD + 4) * 2 + 1;
-static const size_t SERIAL_LINE_BUF_LEN = 32 + MAX_LORA_PAYLOAD * 3 + 32;
+static const uint8_t FRAME_SYNC_0 = 0xA5;
+static const uint8_t FRAME_SYNC_1 = 0x5A;
 
 char serialBuf[SERIAL_HEX_BUF_LEN];
 size_t serialLen = 0;
+bool serialPacketReady = false;
 
-void sendSerialPacketToLoRa() {
+void emitSerialPacket(uint8_t id, const uint8_t *data, uint8_t length, int16_t rssi, int8_t snrQuarterDb) {
+  uint8_t frame[2 + 1 + 1 + 2 + 1 + MAX_LORA_PAYLOAD + 1];
+  size_t idx = 0;
+  uint8_t checksum = 0;
+
+  frame[idx++] = FRAME_SYNC_0;
+  frame[idx++] = FRAME_SYNC_1;
+
+  frame[idx++] = id;
+  checksum += id;
+
+  frame[idx++] = length;
+  checksum += length;
+
+  frame[idx++] = static_cast<uint8_t>(rssi & 0xFF);
+  checksum += frame[idx - 1];
+  frame[idx++] = static_cast<uint8_t>((rssi >> 8) & 0xFF);
+  checksum += frame[idx - 1];
+
+  frame[idx++] = static_cast<uint8_t>(snrQuarterDb);
+  checksum += frame[idx - 1];
+
+  for (uint8_t i = 0; i < length; i++) {
+    frame[idx++] = data[i];
+    checksum += data[i];
+  }
+
+  frame[idx++] = checksum;
+  Serial.write(frame, idx);
+}
+
+void trySendSerialPacketToLoRa() {
+  if (!serialPacketReady) return;
+
   while (serialLen > 0 && isspace(static_cast<unsigned char>(serialBuf[serialLen - 1]))) {
     serialLen--;
   }
 
   if (serialLen < 2) {
     serialLen = 0;
+    serialPacketReady = false;
     return;
   }
 
@@ -41,23 +78,29 @@ void sendSerialPacketToLoRa() {
   LoRa.receive();
   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   serialLen = 0;
+  serialPacketReady = false;
 }
 
 void processSerialInput() {
   while (Serial.available()) {
     char c = static_cast<char>(Serial.read());
     if (c == '\n') {
-      sendSerialPacketToLoRa();
+      serialPacketReady = (serialLen > 0);
       continue;
     }
 
     if (c == '\r') continue;
+
+    if (serialPacketReady) {
+      continue;
+    }
 
     if (serialLen + 1 < SERIAL_HEX_BUF_LEN) {
       serialBuf[serialLen++] = c;
       serialBuf[serialLen] = '\0';
     } else {
       serialLen = 0;
+      serialPacketReady = false;
     }
   }
 }
@@ -84,29 +127,15 @@ bool processLoRaPacket() {
   }
   while (LoRa.available()) LoRa.read();
 
-  int rssi = LoRa.packetRssi();
-  float snr = LoRa.packetSnr();
+  int16_t rssi = static_cast<int16_t>(LoRa.packetRssi());
+  int8_t snrQuarterDb = static_cast<int8_t>(LoRa.packetSnr() * 4.0f);
 
-  // Re-enter RX mode before any serial formatting so we do not miss the next packet.
+  // Re-enter RX mode before any host forwarding so we do not miss the next packet.
   LoRa.receive();
 
   if (recipient != LOCAL_ADDR && recipient != 0xFF) return true;
 
-  char line[SERIAL_LINE_BUF_LEN];
-  int used = snprintf(line, sizeof(line), "DATA %u %u", id, n);
-  for (uint8_t i = 0; i < n && used > 0 && used < static_cast<int>(sizeof(line)); i++) {
-    used += snprintf(line + used, sizeof(line) - used, " %02X", data[i]);
-  }
-
-  if (used > 0 && used < static_cast<int>(sizeof(line))) {
-    used += snprintf(line + used, sizeof(line) - used, " RSSI=%d SNR=%.1f\n", rssi, snr);
-  }
-
-  if (used > 0) {
-    size_t toWrite = static_cast<size_t>(used);
-    if (toWrite > sizeof(line)) toWrite = sizeof(line);
-    Serial.write(reinterpret_cast<const uint8_t *>(line), toWrite);
-  }
+  emitSerialPacket(id, data, n, rssi, snrQuarterDb);
 
   (void)sender;
   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -114,7 +143,7 @@ bool processLoRaPacket() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(HOST_BAUD);
   while (!Serial);
   pinMode(LED_BUILTIN, OUTPUT);
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, CS_PIN);
@@ -126,13 +155,15 @@ void setup() {
   LoRa.setSpreadingFactor(7);
   LoRa.setSignalBandwidth(500E3);
   LoRa.setCodingRate4(5);
+  LoRa.enableCrc();
   LoRa.receive();
-  Serial.println("# Ground station ready.");
 }
 
 void loop() {
   processSerialInput();
+  trySendSerialPacketToLoRa();
   while (processLoRaPacket()) {
     processSerialInput();
+    trySendSerialPacketToLoRa();
   }
 }

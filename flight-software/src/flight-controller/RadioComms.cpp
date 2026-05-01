@@ -31,6 +31,8 @@ namespace RadioComms
         LoRa.setSpreadingFactor(7);
         LoRa.setSignalBandwidth(500E3);
         LoRa.setCodingRate4(5);
+        LoRa.enableCrc();
+        LoRa.receive();
         return true;
     }
 
@@ -79,6 +81,7 @@ namespace RadioComms
             LoRa.write(packet->data[i]);
         }
         LoRa.endPacket();
+        LoRa.receive();
     }
 
     void packetAddFloat(Packet *packet, float value)
