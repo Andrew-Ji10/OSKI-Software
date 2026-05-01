@@ -263,8 +263,8 @@ int LoRaClass::parsePacket(int size)
     // reset FIFO address
     writeRegister(REG_FIFO_ADDR_PTR, 0);
 
-    // put in single RX mode
-    writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_SINGLE);
+    // restore continuous RX for polling-based users
+    writeRegister(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_CONTINUOUS);
   }
 
   return packetLength;

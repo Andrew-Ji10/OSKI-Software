@@ -7,6 +7,7 @@
 #define CMD_TAKE_PHOTO 1
 #define CMD_ADCS_SETPOINT 2
 #define CMD_DEPLOY 3
+#define CMD_SET_CAMERA_RES 4
 
 #define HSK_TELEMETRY 100
 #define BMS_TELEMETRY 101

@@ -49,6 +49,7 @@ RESCAN_INTERVAL = 3.0   # seconds between port scans when disconnected
 # Packet IDs — must match Common.h
 CMD_PING       = 0
 CMD_TAKE_PHOTO = 1
+CMD_SET_CAMERA_RES = 4
 CMD_DEPLOY     = 3
 BMS_TELEMETRY  = 101
 CAM_IMAGE_META = 200
@@ -63,9 +64,20 @@ MAX_MISSING_SEQS_PER_NACK = 125
 MEAS_NAME = {
     CMD_PING:       "ping",
     CMD_TAKE_PHOTO: "take_photo",
+    CMD_SET_CAMERA_RES: "set_camera_res",
     CMD_DEPLOY:     "deploy",
     BMS_TELEMETRY:  "bms",
 }
+
+CAMERA_RES_CODES = {
+    "qvga": 0,
+    "vga": 1,
+    "svga": 2,
+    "xga": 3,
+    "hd": 4,
+}
+
+CAMERA_RES_NAMES = {value: key for key, value in CAMERA_RES_CODES.items()}
 
 # LoRa addressing — must match ground station FW
 FC_ADDR    = 0xAA
@@ -235,6 +247,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     img_last_missing = None
     img_have_new_chunks = False
     img_last_nack_at = 0.0
+    img_progress_idx = None
 
     def serial_thread():
         port = initial_port
@@ -330,9 +343,28 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             elif len(raw) >= 1 and raw[0] == 2:
                                 log.append([f"[{ts}] PHOTO NACK — invalid photo count  RSSI={rssi} SNR={snr}", 4])
                                 pending_burst_request = None
+                            elif len(raw) >= 1 and raw[0] == 3:
+                                log.append([f"[{ts}] PHOTO NACK — camera buffer full  RSSI={rssi} SNR={snr}", 4])
+                                pending_burst_request = None
+                            elif len(raw) >= 1 and raw[0] == 4:
+                                log.append([f"[{ts}] PHOTO NACK — camera comms error  RSSI={rssi} SNR={snr}", 4])
+                                pending_burst_request = None
                             else:
                                 log.append([f"[{ts}] PHOTO ACK — busy/error  RSSI={rssi} SNR={snr}", 4])
                                 pending_burst_request = None
+                        elif pkt_id == CMD_SET_CAMERA_RES:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            status = raw[0] if len(raw) >= 1 else 255
+                            resolution = raw[1] if len(raw) >= 2 else 255
+                            res_name = CAMERA_RES_NAMES.get(resolution, f"code={resolution}")
+                            if status == 0:
+                                log.append([f"[{ts}] CAM RES ACK — {res_name}  RSSI={rssi} SNR={snr}", 1])
+                            elif status == 1:
+                                log.append([f"[{ts}] CAM RES NACK — busy  current={res_name}  RSSI={rssi} SNR={snr}", 4])
+                            elif status == 5:
+                                log.append([f"[{ts}] CAM RES NACK — unsupported  current={res_name}  RSSI={rssi} SNR={snr}", 4])
+                            else:
+                                log.append([f"[{ts}] CAM RES NACK — error status={status} current={res_name}  RSSI={rssi} SNR={snr}", 4])
                         elif pkt_id == CAM_IMAGE_META and len(raw) >= 7:
                             img_transfer_id  = raw[0]
                             img_expected_len = struct.unpack_from("<I", raw, 1)[0]
@@ -344,6 +376,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             ts = datetime.now().strftime("%H:%M:%S")
                             log.append([f"[{ts}] IMG META — id={img_transfer_id} {img_total} chunks, {img_expected_len} B expected", 3])
                             log.append([fmt_img_progress(ts, 0, img_total, img_expected_len), 3])
+                            img_progress_idx = len(log) - 1
                         elif pkt_id == CAM_IMAGE_DATA and len(raw) >= 5:
                             transfer_id = raw[0]
                             seq   = struct.unpack_from("<H", raw, 1)[0]
@@ -356,7 +389,13 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                     img_have_new_chunks = True
                                 received = len(img_chunks)
                                 ts = datetime.now().strftime("%H:%M:%S")
-                                log.append([fmt_img_progress(ts, received, total, img_expected_len, seq, len(chunk)), 3])
+                                progress_msg = fmt_img_progress(ts, received, total, img_expected_len, seq, len(chunk))
+                                if img_progress_idx is not None and img_progress_idx < len(log):
+                                    log[img_progress_idx][0] = progress_msg
+                                    log[img_progress_idx][1] = 3
+                                else:
+                                    log.append([progress_msg, 3])
+                                    img_progress_idx = len(log) - 1
                             else:
                                 ts = datetime.now().strftime("%H:%M:%S")
                                 log.append([f"[{ts}] IMG DROP — id={transfer_id} seq={seq}/{total} ignored", 4])
@@ -403,6 +442,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 img_last_missing = None
                                 img_have_new_chunks = False
                                 img_last_nack_at = 0.0
+                                img_progress_idx = None
                             else:
                                 missing_key = tuple(missing)
                                 should_send_nack = (
@@ -506,6 +546,16 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     cmd_q.put(build_uplink(CMD_DEPLOY))
                     log.append([f"[{ts}] DEPLOY → …", 3])
                     pending_deploy = (len(log) - 1, time.time())
+                elif cmd.lower().startswith("setres") or cmd.lower().startswith("resolution"):
+                    parts = cmd.lower().split()
+                    if len(parts) != 2 or parts[1] not in CAMERA_RES_CODES:
+                        valid = ", ".join(CAMERA_RES_CODES.keys())
+                        log.append([f"[{ts}] CAM RES CMD invalid — use `setres <{valid}>`", 4])
+                    else:
+                        resolution = parts[1]
+                        payload = bytes([CAMERA_RES_CODES[resolution]])
+                        cmd_q.put(build_uplink(CMD_SET_CAMERA_RES, payload))
+                        log.append([f"[{ts}] CAM RES CMD sent — {resolution}", 3])
                 elif cmd.lower().startswith("photo"):
                     parts = cmd.split()
                     count = 1
