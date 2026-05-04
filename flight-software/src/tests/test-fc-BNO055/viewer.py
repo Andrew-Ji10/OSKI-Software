@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-PORT = "/dev/tty.usbmodem14301"
+PORT = "/dev/cu.usbmodem101"
 BAUD = 921600
 
 ser = serial.Serial(PORT, BAUD, timeout=0)

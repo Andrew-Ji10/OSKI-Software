@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include <Wire.h>
  
-#define SDA 18
-#define SCL 8
- 
+// breadboard connections/
+// #define SDA 18
+// #define SCL 8
+#define SDA 8
+#define SCL 7
+
 void setup()
 {
   Wire.begin(SDA, SCL);
