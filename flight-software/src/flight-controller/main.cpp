@@ -1,11 +1,9 @@
 #include <Arduino.h>
 #include "Common.h"
 #include "BMS.h"
-#include "IMU.h"
 #include "GPS.h"
 #include "RadioComms.h"
 #include "CAM.h"
-#include "Housekeeping.h"
 #include "ADCS.h"
 
 // Common files are included here, as well as specific files for this board
@@ -17,6 +15,8 @@
 #define DEPLOY_CTRL 18
 static const uint8_t deployTime = 7; // seconds of burnwire current 
 static const bool autoDeploy = false; // whether to automatically deploy at T30
+
+#define CTRL_5V 42
 
 /**
  * @brief This code implements a task system that allows for the execution of multiple tasks at different intervals.
@@ -79,10 +79,8 @@ Task taskTable[] = {
   {task_autoDeploy, 0, true}, // must be first
   {task_blinkLEDs, 0, true},
   // Example tasks, please flesh out with real tasks and remove these placeholders.
-  {IMU::task_readIMU, 0, true},
   {GPS::task_readGPS, 0, true},
   {BMS::task_sendBMSTelem, 0, true},
-  {Housekeeping::task_sendHSK, 0, true},
   {ADCS::task_runADCS, 0, true},
   {CAM::task_processCamera, 0, true}
 };
@@ -124,10 +122,24 @@ void deployTrigger(Packet packet) {
   RadioComms::emitPacket(&ack);
 }
 
+void control5V(Packet packet) {
+  uint8_t state = RadioComms::packetGetUint8(&packet, 0);
+  digitalWrite(CTRL_5V, state);
+  Serial.printf("5V control set to %d\n", state);
+  Packet response;
+  response.id = CMD_CTRL_5V;
+  response.length = 0;
+  RadioComms::packetAddUint8(&response, state);
+  RadioComms::emitPacket(&response);
+}
+
 void setup() {
   // setup stuff here
   pinMode(DEPLOY_CTRL, OUTPUT);
   digitalWrite(DEPLOY_CTRL, LOW);
+
+  pinMode(CTRL_5V, OUTPUT);
+  digitalWrite(CTRL_5V, HIGH);
 
   Serial.begin(115200);
   initLEDs();
@@ -141,6 +153,7 @@ void setup() {
   // This way, RadioComms doesn't need to #include all other files to deal with commands
   RadioComms::registerCallback(CMD_PING, ping);
   RadioComms::registerCallback(CMD_DEPLOY, deployTrigger);
+  RadioComms::registerCallback(CMD_CTRL_5V, control5V);
 
 
 

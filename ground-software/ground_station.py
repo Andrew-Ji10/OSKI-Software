@@ -51,6 +51,7 @@ CMD_PING       = 0
 CMD_TAKE_PHOTO = 1
 CMD_SET_CAMERA_RES = 4
 CMD_DEPLOY     = 3
+CMD_CTRL_5V    = 5
 BMS_TELEMETRY  = 101
 CAM_IMAGE_META = 200
 CAM_IMAGE_DATA = 201
@@ -66,6 +67,7 @@ MEAS_NAME = {
     CMD_TAKE_PHOTO: "take_photo",
     CMD_SET_CAMERA_RES: "set_camera_res",
     CMD_DEPLOY:     "deploy",
+    CMD_CTRL_5V:    "ctrl_5v",
     BMS_TELEMETRY:  "bms",
 }
 
@@ -234,6 +236,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     pending_pings  = {}
     # pending_deploy: (log_idx, sent_time) or None
     pending_deploy = None
+    # pending_ctrl5v: (log_idx, sent_time) or None
+    pending_ctrl5v = None
     ping_arg       = 0
     last_ping_time = 0.0  # trigger first ping immediately
     pending_burst_request = None
@@ -365,6 +369,14 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 log.append([f"[{ts}] CAM RES NACK — unsupported  current={res_name}  RSSI={rssi} SNR={snr}", 4])
                             else:
                                 log.append([f"[{ts}] CAM RES NACK — error status={status} current={res_name}  RSSI={rssi} SNR={snr}", 4])
+                        elif pkt_id == CMD_CTRL_5V and pending_ctrl5v is not None:
+                            idx, _ = pending_ctrl5v
+                            pending_ctrl5v = None
+                            ts = log[idx][0][1:9]
+                            state = raw[0] if len(raw) >= 1 else 255
+                            state_str = "ON" if state else "OFF"
+                            log[idx][0] = f"[{ts}] CTRL5V ACK — set {state_str}  RSSI={rssi} SNR={snr}"
+                            log[idx][1] = 1  # green
                         elif pkt_id == CAM_IMAGE_META and len(raw) >= 7:
                             img_transfer_id  = raw[0]
                             img_expected_len = struct.unpack_from("<I", raw, 1)[0]
@@ -497,6 +509,12 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                 log[idx][0] = log[idx][0].replace(" → …", " → NO RETURN PACKET")
                 log[idx][1] = 4  # red
                 pending_deploy = None
+        if pending_ctrl5v is not None:
+            idx, sent_at = pending_ctrl5v
+            if now - sent_at > PING_TIMEOUT_S:
+                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
+                log[idx][1] = 4  # red
+                pending_ctrl5v = None
 
         # draw status bar + log
         stdscr.erase()
@@ -585,6 +603,15 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         else:
                             pending_burst_request = None
                         log.append([f"[{ts}] PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s", 3])
+                elif cmd.lower().startswith("ctrl5v"):
+                    parts = cmd.lower().split()
+                    if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):
+                        log.append([f"[{ts}] CTRL5V CMD invalid — use `ctrl5v on/off`", 4])
+                    else:
+                        state = 1 if parts[1] in ("on", "1") else 0
+                        cmd_q.put(build_uplink(CMD_CTRL_5V, bytes([state])))
+                        log.append([f"[{ts}] CTRL5V CMD sent — {'ON' if state else 'OFF'} → …", 3])
+                        pending_ctrl5v = (len(log) - 1, time.time())
                 else:
                     log.append([f">> {cmd}", 3])
             input_buf = ""
