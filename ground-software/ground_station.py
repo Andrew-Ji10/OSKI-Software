@@ -14,6 +14,7 @@ Environment variables:
 
 import os
 import sys
+import math
 import time
 import struct
 import curses
@@ -47,11 +48,14 @@ DEPLOY_TIMEOUT_S = 6.0   # seconds before a sent deploy is marked NO RETURN PACK
 RESCAN_INTERVAL = 3.0   # seconds between port scans when disconnected
 
 # Packet IDs — must match Common.h
-CMD_PING       = 0
-CMD_TAKE_PHOTO = 1
-CMD_SET_CAMERA_RES = 4
-CMD_DEPLOY     = 3
-CMD_CTRL_5V    = 5
+CMD_PING            = 0
+CMD_TAKE_PHOTO      = 1
+CMD_ADCS_SETPOINT   = 2
+CMD_DEPLOY          = 3
+CMD_SET_CAMERA_RES  = 4
+CMD_CTRL_5V         = 5
+CMD_ADCS_ENABLE     = 6
+CMD_ADCS_ZERO       = 7
 BMS_TELEMETRY  = 101
 CAM_IMAGE_META = 200
 CAM_IMAGE_DATA = 201
@@ -63,12 +67,15 @@ FRAME_SYNC = b"\xA5\x5A"
 MAX_MISSING_SEQS_PER_NACK = 125
 
 MEAS_NAME = {
-    CMD_PING:       "ping",
-    CMD_TAKE_PHOTO: "take_photo",
+    CMD_PING:           "ping",
+    CMD_TAKE_PHOTO:     "take_photo",
+    CMD_ADCS_SETPOINT:  "adcs_setpoint",
+    CMD_ADCS_ENABLE:    "adcs_enable",
+    CMD_ADCS_ZERO:      "adcs_zero",
     CMD_SET_CAMERA_RES: "set_camera_res",
-    CMD_DEPLOY:     "deploy",
-    CMD_CTRL_5V:    "ctrl_5v",
-    BMS_TELEMETRY:  "bms",
+    CMD_DEPLOY:         "deploy",
+    CMD_CTRL_5V:        "ctrl_5v",
+    BMS_TELEMETRY:      "bms",
 }
 
 CAMERA_RES_CODES = {
@@ -84,6 +91,20 @@ CAMERA_RES_NAMES = {value: key for key, value in CAMERA_RES_CODES.items()}
 # LoRa addressing — must match ground station FW
 FC_ADDR    = 0xAA
 LOCAL_ADDR = 0xBB
+
+def euler_to_quat(roll_deg, pitch_deg, yaw_deg):
+    """ZYX convention: yaw applied first, then pitch, then roll."""
+    r = math.radians(roll_deg)
+    p = math.radians(pitch_deg)
+    y = math.radians(yaw_deg)
+    cr, sr = math.cos(r / 2), math.sin(r / 2)
+    cp, sp = math.cos(p / 2), math.sin(p / 2)
+    cy, sy = math.cos(y / 2), math.sin(y / 2)
+    w =  cr * cp * cy + sr * sp * sy
+    x =  sr * cp * cy - cr * sp * sy
+    y_ = cr * sp * cy + sr * cp * sy
+    z =  cr * cp * sy - sr * sp * cy
+    return w, x, y_, z
 
 def build_uplink(pkt_id, data=b""):
     """Return a hex string the ground station FW will relay verbatim over LoRa."""
@@ -238,6 +259,12 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     pending_deploy = None
     # pending_ctrl5v: (log_idx, sent_time) or None
     pending_ctrl5v = None
+    # pending_adcs: (log_idx, sent_time) or None
+    pending_adcs = None
+    # pending_adcs_enable: (log_idx, sent_time) or None
+    pending_adcs_enable = None
+    # pending_adcs_zero: (log_idx, sent_time) or None
+    pending_adcs_zero = None
     ping_arg       = 0
     last_ping_time = 0.0  # trigger first ping immediately
     pending_burst_request = None
@@ -377,6 +404,31 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             state_str = "ON" if state else "OFF"
                             log[idx][0] = f"[{ts}] CTRL5V ACK — set {state_str}  RSSI={rssi} SNR={snr}"
                             log[idx][1] = 1  # green
+                        elif pkt_id == CMD_ADCS_SETPOINT and pending_adcs is not None:
+                            idx, _ = pending_adcs
+                            pending_adcs = None
+                            ts = log[idx][0][1:9]
+                            log[idx][0] = f"[{ts}] ADCS ACK — setpoint confirmed  RSSI={rssi} SNR={snr}"
+                            log[idx][1] = 1  # green
+                        elif pkt_id == CMD_ADCS_ZERO and pending_adcs_zero is not None:
+                            idx, _ = pending_adcs_zero
+                            pending_adcs_zero = None
+                            ts = log[idx][0][1:9]
+                            log[idx][0] = f"[{ts}] ADCS ZERO ACK — wheels zeroed  RSSI={rssi} SNR={snr}"
+                            log[idx][1] = 1  # green
+                        elif pkt_id == CMD_ADCS_ENABLE and pending_adcs_enable is not None:
+                            idx, _ = pending_adcs_enable
+                            pending_adcs_enable = None
+                            ts = log[idx][0][1:9]
+                            if len(raw) >= 3:
+                                xs = "ON" if raw[0] else "OFF"
+                                ys = "ON" if raw[1] else "OFF"
+                                zs = "ON" if raw[2] else "OFF"
+                                log[idx][0] = (f"[{ts}] ADCS ENABLE ACK — "
+                                               f"X={xs} Y={ys} Z={zs}  RSSI={rssi} SNR={snr}")
+                            else:
+                                log[idx][0] = f"[{ts}] ADCS ENABLE ACK  RSSI={rssi} SNR={snr}"
+                            log[idx][1] = 1  # green
                         elif pkt_id == CAM_IMAGE_META and len(raw) >= 7:
                             img_transfer_id  = raw[0]
                             img_expected_len = struct.unpack_from("<I", raw, 1)[0]
@@ -515,6 +567,24 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                 log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
                 log[idx][1] = 4  # red
                 pending_ctrl5v = None
+        if pending_adcs is not None:
+            idx, sent_at = pending_adcs
+            if now - sent_at > PING_TIMEOUT_S:
+                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
+                log[idx][1] = 4  # red
+                pending_adcs = None
+        if pending_adcs_enable is not None:
+            idx, sent_at = pending_adcs_enable
+            if now - sent_at > PING_TIMEOUT_S:
+                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
+                log[idx][1] = 4  # red
+                pending_adcs_enable = None
+        if pending_adcs_zero is not None:
+            idx, sent_at = pending_adcs_zero
+            if now - sent_at > PING_TIMEOUT_S:
+                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
+                log[idx][1] = 4  # red
+                pending_adcs_zero = None
 
         # draw status bar + log
         stdscr.erase()
@@ -603,6 +673,42 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         else:
                             pending_burst_request = None
                         log.append([f"[{ts}] PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s", 3])
+                elif cmd.lower().startswith("adcs"):
+                    parts = cmd.split()
+                    sub = parts[1].lower() if len(parts) >= 2 else ""
+                    if sub == "zero":
+                        cmd_q.put(build_uplink(CMD_ADCS_ZERO))
+                        log.append([f"[{ts}] ADCS ZERO CMD sent → …", 3])
+                        pending_adcs_zero = (len(log) - 1, time.time())
+                    elif sub == "enable":
+                        valid = ("on", "off", "1", "0")
+                        flags_raw = [p.lower() for p in parts[2:]]
+                        if len(flags_raw) != 3 or any(p not in valid for p in flags_raw):
+                            log.append([f"[{ts}] ADCS ENABLE CMD invalid — use `adcs enable <x> <y> <z>` (on/off)", 4])
+                        else:
+                            flags = [1 if p in ("on", "1") else 0 for p in flags_raw]
+                            cmd_q.put(build_uplink(CMD_ADCS_ENABLE, bytes(flags)))
+                            xs, ys, zs = ("ON" if f else "OFF" for f in flags)
+                            log.append([f"[{ts}] ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", 3])
+                            pending_adcs_enable = (len(log) - 1, time.time())
+                    elif sub == "set":
+                        try:
+                            if len(parts) != 5:
+                                raise ValueError
+                            roll_deg  = float(parts[2])
+                            pitch_deg = float(parts[3])
+                            yaw_deg   = float(parts[4])
+                        except ValueError:
+                            log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <roll_deg> <pitch_deg> <yaw_deg>`", 4])
+                        else:
+                            w, x, y, z = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
+                            payload = struct.pack("<ffff", w, x, y, z)
+                            cmd_q.put(build_uplink(CMD_ADCS_SETPOINT, payload))
+                            log.append([f"[{ts}] ADCS SET CMD sent — "
+                                        f"roll={roll_deg:.1f}° pitch={pitch_deg:.1f}° yaw={yaw_deg:.1f}° → …", 3])
+                            pending_adcs = (len(log) - 1, time.time())
+                    else:
+                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/enable/zero`", 4])
                 elif cmd.lower().startswith("ctrl5v"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):

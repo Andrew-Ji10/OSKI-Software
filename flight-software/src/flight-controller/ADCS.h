@@ -5,6 +5,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include "Common.h"
+#include "RadioComms.h"
 
 
 namespace ADCS {

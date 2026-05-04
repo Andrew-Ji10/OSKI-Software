@@ -12,6 +12,8 @@ static constexpr uint8_t BNO_ADDR = 0x28;
 
 static Adafruit_BNO055 bno = Adafruit_BNO055(55, BNO_ADDR, &Wire);
 
+#define WHEEL_SERIAL Serial // Replace later
+
 // ==========================
 // CONTROL CONSTANTS
 // ==========================
@@ -53,9 +55,13 @@ static float q_des_x = 0.0f;
 static float q_des_y = 0.0f;
 static float q_des_z = 0.0f;
 
+static bool x_enabled = true;
+static bool y_enabled = true;
+static bool z_enabled = true;
+
 // ==========================
 // HELPERS
-// ==========================
+// ==========================..................................................................................................................
 
 static float clampf(float x, float lo, float hi) {
   if (x < lo) return lo;
@@ -98,18 +104,68 @@ static void quatMultiply(float aw, float ax, float ay, float az,
   oz = aw*bz + ax*by - ay*bx + az*bw;
 }
 
-static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
-  // Replace Serial1 with your actual flight-controller-to-ADCS-protoboard interface.
-  // For initial debugging, Serial is fine.
-  Serial.print("XR");
-  Serial.println(ramp_x, 3);
-
-  Serial.print("YR");
-  Serial.println(ramp_y, 3);
-
-  Serial.print("ZR");
-  Serial.println(ramp_z, 3);
+void setDesiredAttitude(Packet packet) {
+  q_des_w = RadioComms::packetGetFloat(&packet, 0);
+  q_des_x = RadioComms::packetGetFloat(&packet, 4);
+  q_des_y = RadioComms::packetGetFloat(&packet, 8);
+  q_des_z = RadioComms::packetGetFloat(&packet, 12);
+  //ack
+  Packet response;
+  response.id = CMD_ADCS_SETPOINT;
+  response.length = 0;
+  RadioComms::emitPacket(&response);
 }
+
+void enableADCS(Packet packet) {
+    x_enabled = packet.data[0] != 0;
+    y_enabled = packet.data[1] != 0;
+    z_enabled = packet.data[2] != 0;
+    //ack
+    Packet response;
+    response.id = CMD_ADCS_ENABLE;
+    response.length = 0;
+    RadioComms::packetAddUint8(&response, x_enabled ? 1 : 0);
+    RadioComms::packetAddUint8(&response, y_enabled ? 1 : 0);
+    RadioComms::packetAddUint8(&response, z_enabled ? 1 : 0);
+    RadioComms::emitPacket(&response);
+}
+
+static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
+
+  if (x_enabled) {
+    WHEEL_SERIAL.print("XR");
+    WHEEL_SERIAL.println(ramp_x, 3);
+  }
+
+  if (y_enabled) {
+    WHEEL_SERIAL.print("YR");
+    WHEEL_SERIAL.println(ramp_y, 3);
+  }
+
+  if (z_enabled) {
+    WHEEL_SERIAL.print("ZR");
+    WHEEL_SERIAL.println(ramp_z, 3);
+  }
+}
+
+static void zeroWheels() {
+  sendADCSCommand(0.0f, 0.0f, 0.0f);
+  WHEEL_SERIAL.println("XV0");
+  WHEEL_SERIAL.println("YV0");
+  WHEEL_SERIAL.println("ZV0");
+}
+
+void zeroWheelsCmd(Packet packet) {
+  x_enabled = false;
+  y_enabled = false;
+  z_enabled = false;
+  zeroWheels();
+  Packet response;
+  response.id = CMD_ADCS_ZERO;
+  response.length = 0;
+  RadioComms::emitPacket(&response);
+}
+
 
 // ==========================
 // INIT
@@ -127,6 +183,10 @@ void init() {
   delay(100);
   bno.setExtCrystalUse(true);
   delay(100);
+
+  RadioComms::registerCallback(CMD_ADCS_SETPOINT, setDesiredAttitude);
+  RadioComms::registerCallback(CMD_ADCS_ENABLE, enableADCS);
+  RadioComms::registerCallback(CMD_ADCS_ZERO, zeroWheelsCmd);
 
   Serial.println("ADCS initialized");
 }

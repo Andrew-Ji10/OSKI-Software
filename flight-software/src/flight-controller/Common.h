@@ -6,9 +6,12 @@
 #define CMD_PING 0
 #define CMD_TAKE_PHOTO 1
 #define CMD_ADCS_SETPOINT 2
+#define CMD_ADCS_ENABLE 6
+#define CMD_ADCS_ZERO   7
 #define CMD_DEPLOY 3
 #define CMD_SET_CAMERA_RES 4
 #define CMD_CTRL_5V 5
+
 
 #define HSK_TELEMETRY 100
 #define BMS_TELEMETRY 101

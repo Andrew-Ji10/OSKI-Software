@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include "Common.h"
 #include "BMS.h"
-#include "GPS.h"
 #include "RadioComms.h"
 #include "CAM.h"
 #include "ADCS.h"
@@ -78,8 +77,6 @@ Task taskTable[] = {
   //{task_helloWorld, 0, true},
   {task_autoDeploy, 0, true}, // must be first
   {task_blinkLEDs, 0, true},
-  // Example tasks, please flesh out with real tasks and remove these placeholders.
-  {GPS::task_readGPS, 0, true},
   {BMS::task_sendBMSTelem, 0, true},
   {ADCS::task_runADCS, 0, true},
   {CAM::task_processCamera, 0, true}
@@ -144,11 +141,9 @@ void setup() {
   Serial.begin(115200);
   initLEDs();
   RadioComms::init();
-  IMU::init();
-  GPS::init();
   BMS::init();
   CAM::init();
-  Housekeeping::init();
+  ADCS::init();
 
   // This way, RadioComms doesn't need to #include all other files to deal with commands
   RadioComms::registerCallback(CMD_PING, ping);
