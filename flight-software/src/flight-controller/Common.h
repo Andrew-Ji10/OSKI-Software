@@ -8,13 +8,16 @@
 #define CMD_ADCS_SETPOINT 2
 #define CMD_ADCS_ENABLE 6
 #define CMD_ADCS_ZERO   7
+#define CMD_ADCS_SET_PID 8
 #define CMD_DEPLOY 3
 #define CMD_SET_CAMERA_RES 4
 #define CMD_CTRL_5V 5
 
 
-#define HSK_TELEMETRY 100
-#define BMS_TELEMETRY 101
+#define HSK_TELEMETRY  100
+#define BMS_TELEMETRY  101
+#define ADCS_TELEMETRY 102  // setpoint quat + current quat + gyro + integrators (56 bytes)
+#define ADCS_PARAMS    103  // PID gains per axis + enables (39 bytes)
 
 #define CAM_IMAGE_META 200  // transfer_id (uint8) + total_size (uint32) + num_chunks (uint16)
 #define CAM_IMAGE_DATA 201  // transfer_id (uint8) + seq (uint16) + total (uint16) + chunk bytes

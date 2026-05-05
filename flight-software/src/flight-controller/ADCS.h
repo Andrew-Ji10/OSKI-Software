@@ -12,5 +12,7 @@
 namespace ADCS {
   void init();
   uint32_t task_runADCS();
+  uint32_t task_sendADCSTelem();
+  uint32_t task_sendADCSParams();
 }
 #endif

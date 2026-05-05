@@ -1,17 +1,24 @@
 #include <Arduino.h>
 #include <SimpleFOC.h>
 
-#define IN1 33
-#define IN2 15
-#define IN3 32
-#define SIMPLEFOC_EN 14
-#define SIMPLEFOC_GND 27
+// #define IN1 33
+// #define IN2 15
+// #define IN3 32
+// #define SIMPLEFOC_EN 14
+// #define SIMPLEFOC_GND 27
 #include <SimpleFOC.h>
+
+// ================= WHEEL X PINS =================
+#define IN1 19
+#define IN2 4
+#define IN3 5
+#define EN  26   // shared EN line for all three drivers
+#define CS  32
 
 // BLDCMotor(pole pair number);
 BLDCMotor motor = BLDCMotor(7);
 // BLDCDriver3PWM(pwmA, pwmB, pwmC, Enable(optional));
-BLDCDriver3PWM driver = BLDCDriver3PWM(IN1, IN2, IN3, SIMPLEFOC_EN); // set your pins
+BLDCDriver3PWM driver = BLDCDriver3PWM(IN1, IN2, IN3, EN); // set your pins
 uint32_t last_time = 0;
 
 // instantiate the commander
@@ -33,8 +40,8 @@ void setup() {
   // limit the maximal dc voltage the driver can set
   driver.voltage_limit = 6; //set your voltage limit; Usually half of power supply voltage is a good 
 
-  pinMode(SIMPLEFOC_GND, OUTPUT); // set "GND" pin to LOW to be SimpleFOC's GND
-  digitalWrite(SIMPLEFOC_GND, LOW); // set "GND" pin
+  // pinMode(SIMPLEFOC_GND, OUTPUT); // set "GND" pin to LOW to be SimpleFOC's GND
+  // digitalWrite(SIMPLEFOC_GND, LOW); // set "GND" pin
 
   pinMode(LED_BUILTIN, OUTPUT); // set the LED pin as output
   digitalWrite(LED_BUILTIN, LOW); // turn off the LED

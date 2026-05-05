@@ -20,6 +20,7 @@ import struct
 import curses
 import threading
 import queue
+from dataclasses import dataclass
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -42,10 +43,10 @@ AUTO_PING_ENABLED = False
 FEATHER_V2_VID = 0x1A86  # WCH CH340 (Feather ESP32 V2)
 ESP32_S3_VID   = 0x303A  # Espressif native USB (FC S3 DevKitC)
 
-PING_INTERVAL_S  = 5.0   # seconds between auto-pings
-PING_TIMEOUT_S   = 4.0   # seconds before a sent ping is marked NO ACK
-DEPLOY_TIMEOUT_S = 6.0   # seconds before a sent deploy is marked NO RETURN PACKET
-RESCAN_INTERVAL = 3.0   # seconds between port scans when disconnected
+PING_INTERVAL_S  = 5.0
+PING_TIMEOUT_S   = 4.0
+DEPLOY_TIMEOUT_S = 6.0
+RESCAN_INTERVAL  = 3.0
 
 # Packet IDs — must match Common.h
 CMD_PING            = 0
@@ -56,7 +57,10 @@ CMD_SET_CAMERA_RES  = 4
 CMD_CTRL_5V         = 5
 CMD_ADCS_ENABLE     = 6
 CMD_ADCS_ZERO       = 7
+CMD_ADCS_SET_PID    = 8
 BMS_TELEMETRY  = 101
+ADCS_TELEMETRY = 102
+ADCS_PARAMS    = 103
 CAM_IMAGE_META = 200
 CAM_IMAGE_DATA = 201
 CAM_IMAGE_DONE = 202
@@ -72,6 +76,9 @@ MEAS_NAME = {
     CMD_ADCS_SETPOINT:  "adcs_setpoint",
     CMD_ADCS_ENABLE:    "adcs_enable",
     CMD_ADCS_ZERO:      "adcs_zero",
+    CMD_ADCS_SET_PID:   "adcs_set_pid",
+    ADCS_TELEMETRY:     "adcs_telem",
+    ADCS_PARAMS:        "adcs_params",
     CMD_SET_CAMERA_RES: "set_camera_res",
     CMD_DEPLOY:         "deploy",
     CMD_CTRL_5V:        "ctrl_5v",
@@ -91,6 +98,17 @@ CAMERA_RES_NAMES = {value: key for key, value in CAMERA_RES_CODES.items()}
 # LoRa addressing — must match ground station FW
 FC_ADDR    = 0xAA
 LOCAL_ADDR = 0xBB
+
+# ── Pending command tracker ──────────────────────────────────────────────────────
+
+@dataclass
+class PendingCmd:
+    log_idx:     int
+    sent_at:     float
+    timeout:     float = PING_TIMEOUT_S
+    timeout_msg: str   = " → NO ACK"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────────
 
 def euler_to_quat(roll_deg, pitch_deg, yaw_deg):
     """ZYX convention: yaw applied first, then pitch, then roll."""
@@ -182,6 +200,28 @@ def fmt_packet(pkt_id, raw, rssi, snr):
                 f"intTemp={int_temp:.1f}°C  tsTemp={ts_temp:.1f}°C")
     return f"[{ts}] PKT id={pkt_id} len={len(raw)} {raw.hex()}"
 
+_TS_PAD = " " * 11  # aligns continuation lines under content after "[HH:MM:SS] "
+
+def fmt_adcs_telem(ts, raw, rssi, snr):
+    v = struct.unpack_from("<14f", raw, 0)
+    return [
+        f"[{ts}] ADCS TELEM  RSSI={rssi} SNR={snr:.1f}",
+        f"{_TS_PAD}  setpoint  w={v[0]:+.4f} x={v[1]:+.4f} y={v[2]:+.4f} z={v[3]:+.4f}",
+        f"{_TS_PAD}  current   w={v[4]:+.4f} x={v[5]:+.4f} y={v[6]:+.4f} z={v[7]:+.4f}",
+        f"{_TS_PAD}  gyro r/s  x={v[8]:+.4f} y={v[9]:+.4f} z={v[10]:+.4f}",
+        f"{_TS_PAD}  integral  x={v[11]:+.6f} y={v[12]:+.6f} z={v[13]:+.6f}",
+    ]
+
+def fmt_adcs_params(ts, raw, rssi, snr):
+    v = struct.unpack_from("<9f", raw, 0)
+    en = ["ON " if raw[36 + i] else "OFF" for i in range(3)]
+    return [
+        f"[{ts}] ADCS PARAMS  RSSI={rssi} SNR={snr:.1f}",
+        f"{_TS_PAD}  X [{en[0]}]  Kp={v[0]:.3e}  Ki={v[1]:.3e}  Kd={v[2]:.3e}",
+        f"{_TS_PAD}  Y [{en[1]}]  Kp={v[3]:.3e}  Ki={v[4]:.3e}  Kd={v[5]:.3e}",
+        f"{_TS_PAD}  Z [{en[2]}]  Kp={v[6]:.3e}  Ki={v[7]:.3e}  Kd={v[8]:.3e}",
+    ]
+
 def fmt_img_progress(ts, received, total, expected_len, seq=None, chunk_len=None):
     msg = f"[{ts}] IMG RX — {received}/{total} chunks received"
     if expected_len:
@@ -206,6 +246,22 @@ def influx_fields(pkt_id, raw):
             "cell3_mV": int(c3), "cell4_mV": int(c4),
             "stack_mV": int(stack), "current_mA": int(current),
             "intTemp_C": float(int_temp), "tsTemp_C": float(ts_temp),
+        }
+    if pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
+        v = struct.unpack_from("<14f", raw, 0)
+        return {
+            "des_qw": v[0],  "des_qx": v[1],  "des_qy": v[2],  "des_qz": v[3],
+            "qw":     v[4],  "qx":     v[5],  "qy":     v[6],  "qz":     v[7],
+            "wx":     v[8],  "wy":     v[9],  "wz":     v[10],
+            "int_x":  v[11], "int_y":  v[12], "int_z":  v[13],
+        }
+    if pkt_id == ADCS_PARAMS and len(raw) >= 39:
+        v = struct.unpack_from("<9f", raw, 0)
+        return {
+            "kp_x": v[0], "ki_x": v[1], "kd_x": v[2],
+            "kp_y": v[3], "ki_y": v[4], "kd_y": v[5],
+            "kp_z": v[6], "ki_z": v[7], "kd_z": v[8],
+            "x_en": int(raw[36]), "y_en": int(raw[37]), "z_en": int(raw[38]),
         }
     return None
 
@@ -246,39 +302,96 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_RED,    curses.COLOR_BLACK)
 
-    # log is a list of [text, color_pair] — mutable so ping lines can be updated
     log           = []
     input_buf     = ""
     pkt_q         = queue.Queue()
     cmd_q         = queue.Queue()
     serial_status = ["scanning…"]  # mutable so serial_thread can update it
 
-    # pending_pings: arg -> (log_idx, sent_time)
+    # pending: keyed by command name, each entry expires after its timeout
+    pending: dict[str, PendingCmd] = {}
+    # pending_pings is keyed by ping arg rather than a singleton, so kept separate
     pending_pings  = {}
-    # pending_deploy: (log_idx, sent_time) or None
-    pending_deploy = None
-    # pending_ctrl5v: (log_idx, sent_time) or None
-    pending_ctrl5v = None
-    # pending_adcs: (log_idx, sent_time) or None
-    pending_adcs = None
-    # pending_adcs_enable: (log_idx, sent_time) or None
-    pending_adcs_enable = None
-    # pending_adcs_zero: (log_idx, sent_time) or None
-    pending_adcs_zero = None
     ping_arg       = 0
-    last_ping_time = 0.0  # trigger first ping immediately
+    last_ping_time = 0.0
     pending_burst_request = None
     active_burst = None
 
     # image reassembly state
-    img_chunks       = {}   # seq (int) -> bytes
+    img_chunks       = {}
     img_transfer_id  = None
-    img_total        = 0    # expected chunk count
-    img_expected_len = 0    # expected byte count from META packet
+    img_total        = 0
+    img_expected_len = 0
     img_last_missing = None
     img_have_new_chunks = False
     img_last_nack_at = 0.0
     img_progress_idx = None
+
+    # ── Shared helpers ────────────────────────────────────────────────────────
+
+    def resolve(key, msg, rssi, snr, color=1):
+        """Update a pending command's log line with an ACK message."""
+        p = pending.pop(key, None)
+        if p is None:
+            return
+        ts = log[p.log_idx][0][1:9]
+        log[p.log_idx][0] = f"[{ts}] {msg}  RSSI={rssi} SNR={snr}"
+        log[p.log_idx][1] = color
+
+    def send_cmd(pkt_id, payload, log_msg, pending_key=None,
+                 timeout=PING_TIMEOUT_S, timeout_msg=" → NO ACK"):
+        """Enqueue an uplink, append a log line, and register a pending entry."""
+        cmd_q.put(build_uplink(pkt_id, payload))
+        ts = datetime.now().strftime("%H:%M:%S")
+        log.append([f"[{ts}] {log_msg}", 3])
+        if pending_key is not None:
+            pending[pending_key] = PendingCmd(len(log) - 1, time.time(), timeout, timeout_msg)
+
+    # ── ACK handlers (one per packet ID) ──────────────────────────────────────
+
+    def on_deploy(raw, rssi, snr):
+        if len(raw) >= 1 and raw[0] == 0:
+            resolve("deploy", "DEPLOY ACK — sequence triggered", rssi, snr)
+        else:
+            resolve("deploy", "DEPLOY — invalid command", rssi, snr, color=4)
+
+    def on_ctrl5v(raw, rssi, snr):
+        state_str = "ON" if (raw[0] if len(raw) >= 1 else 0) else "OFF"
+        resolve("ctrl5v", f"CTRL5V ACK — set {state_str}", rssi, snr)
+
+    def on_adcs_setpoint(raw, rssi, snr):
+        resolve("adcs", "ADCS ACK — setpoint confirmed", rssi, snr)
+
+    def on_adcs_zero(raw, rssi, snr):
+        resolve("adcs_zero", "ADCS ZERO ACK — wheels zeroed", rssi, snr)
+
+    def on_adcs_enable(raw, rssi, snr):
+        if len(raw) >= 3:
+            xs, ys, zs = ["ON" if raw[i] else "OFF" for i in range(3)]
+            msg = f"ADCS ENABLE ACK — X={xs} Y={ys} Z={zs}"
+        else:
+            msg = "ADCS ENABLE ACK"
+        resolve("adcs_enable", msg, rssi, snr)
+
+    def on_adcs_pid(raw, rssi, snr):
+        if len(raw) >= 13:
+            axis_n, kp, ki, kd = struct.unpack_from("<Bfff", raw, 0)
+            axis_s = ("X", "Y", "Z")[axis_n] if axis_n < 3 else str(axis_n)
+            msg = f"ADCS PID ACK — {axis_s} Kp={kp:.6f} Ki={ki:.6f} Kd={kd:.6f}"
+        else:
+            msg = "ADCS PID ACK"
+        resolve("adcs_pid", msg, rssi, snr)
+
+    ack_dispatch = {
+        CMD_DEPLOY:        on_deploy,
+        CMD_CTRL_5V:       on_ctrl5v,
+        CMD_ADCS_SETPOINT: on_adcs_setpoint,
+        CMD_ADCS_ZERO:     on_adcs_zero,
+        CMD_ADCS_ENABLE:   on_adcs_enable,
+        CMD_ADCS_SET_PID:  on_adcs_pid,
+    }
+
+    # ── Serial thread ─────────────────────────────────────────────────────────
 
     def serial_thread():
         port = initial_port
@@ -325,7 +438,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         log_start = 1
         log_h = h - 2 - log_start
 
-        # drain queue
+        # ── Drain packet queue ────────────────────────────────────────────────
         try:
             while True:
                 line, color = pkt_q.get_nowait()
@@ -342,22 +455,12 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             echoed, val = struct.unpack_from("<II", raw, 0)
                             if echoed in pending_pings:
                                 idx, _ = pending_pings.pop(echoed)
-                                ts = log[idx][0][1:9]  # reuse original HH:MM:SS
+                                ts = log[idx][0][1:9]
                                 log[idx][0] = (f"[{ts}] PING #{echoed} → "
                                                f"val={val}  RSSI={rssi} SNR={snr}")
-                                log[idx][1] = 1  # green on ack
+                                log[idx][1] = 1
                             else:
                                 log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
-                        elif pkt_id == CMD_DEPLOY and pending_deploy is not None:
-                            idx, _ = pending_deploy
-                            pending_deploy = None
-                            ts = log[idx][0][1:9]
-                            if len(raw) >= 1 and raw[0] == 0:
-                                log[idx][0] = f"[{ts}] DEPLOY ACK — sequence triggered  RSSI={rssi} SNR={snr}"
-                                log[idx][1] = 1  # green
-                            else:
-                                log[idx][0] = f"[{ts}] DEPLOY — invalid command  RSSI={rssi} SNR={snr}"
-                                log[idx][1] = 4  # red
                         elif pkt_id == CMD_TAKE_PHOTO:
                             ts = datetime.now().strftime("%H:%M:%S")
                             if len(raw) >= 1 and raw[0] == 0:
@@ -396,39 +499,16 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 log.append([f"[{ts}] CAM RES NACK — unsupported  current={res_name}  RSSI={rssi} SNR={snr}", 4])
                             else:
                                 log.append([f"[{ts}] CAM RES NACK — error status={status} current={res_name}  RSSI={rssi} SNR={snr}", 4])
-                        elif pkt_id == CMD_CTRL_5V and pending_ctrl5v is not None:
-                            idx, _ = pending_ctrl5v
-                            pending_ctrl5v = None
-                            ts = log[idx][0][1:9]
-                            state = raw[0] if len(raw) >= 1 else 255
-                            state_str = "ON" if state else "OFF"
-                            log[idx][0] = f"[{ts}] CTRL5V ACK — set {state_str}  RSSI={rssi} SNR={snr}"
-                            log[idx][1] = 1  # green
-                        elif pkt_id == CMD_ADCS_SETPOINT and pending_adcs is not None:
-                            idx, _ = pending_adcs
-                            pending_adcs = None
-                            ts = log[idx][0][1:9]
-                            log[idx][0] = f"[{ts}] ADCS ACK — setpoint confirmed  RSSI={rssi} SNR={snr}"
-                            log[idx][1] = 1  # green
-                        elif pkt_id == CMD_ADCS_ZERO and pending_adcs_zero is not None:
-                            idx, _ = pending_adcs_zero
-                            pending_adcs_zero = None
-                            ts = log[idx][0][1:9]
-                            log[idx][0] = f"[{ts}] ADCS ZERO ACK — wheels zeroed  RSSI={rssi} SNR={snr}"
-                            log[idx][1] = 1  # green
-                        elif pkt_id == CMD_ADCS_ENABLE and pending_adcs_enable is not None:
-                            idx, _ = pending_adcs_enable
-                            pending_adcs_enable = None
-                            ts = log[idx][0][1:9]
-                            if len(raw) >= 3:
-                                xs = "ON" if raw[0] else "OFF"
-                                ys = "ON" if raw[1] else "OFF"
-                                zs = "ON" if raw[2] else "OFF"
-                                log[idx][0] = (f"[{ts}] ADCS ENABLE ACK — "
-                                               f"X={xs} Y={ys} Z={zs}  RSSI={rssi} SNR={snr}")
-                            else:
-                                log[idx][0] = f"[{ts}] ADCS ENABLE ACK  RSSI={rssi} SNR={snr}"
-                            log[idx][1] = 1  # green
+                        elif pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            for line in fmt_adcs_telem(ts, raw, rssi, snr):
+                                log.append([line, 1])
+                        elif pkt_id == ADCS_PARAMS and len(raw) >= 39:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            for line in fmt_adcs_params(ts, raw, rssi, snr):
+                                log.append([line, 2])
+                        elif pkt_id in ack_dispatch:
+                            ack_dispatch[pkt_id](raw, rssi, snr)
                         elif pkt_id == CAM_IMAGE_META and len(raw) >= 7:
                             img_transfer_id  = raw[0]
                             img_expected_len = struct.unpack_from("<I", raw, 1)[0]
@@ -541,7 +621,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         except queue.Empty:
             pass
 
-        # auto-ping + expire timed-out pings / deploys
+        # ── Timeouts ──────────────────────────────────────────────────────────
         now = time.time()
         if AUTO_PING_ENABLED and now - last_ping_time >= PING_INTERVAL_S:
             cmd_q.put(build_uplink(CMD_PING, struct.pack("<I", ping_arg)))
@@ -553,40 +633,15 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         for arg, (idx, sent_at) in list(pending_pings.items()):
             if now - sent_at > PING_TIMEOUT_S:
                 log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
-                log[idx][1] = 4  # red
+                log[idx][1] = 4
                 del pending_pings[arg]
-        if pending_deploy is not None:
-            idx, sent_at = pending_deploy
-            if now - sent_at > DEPLOY_TIMEOUT_S:
-                log[idx][0] = log[idx][0].replace(" → …", " → NO RETURN PACKET")
-                log[idx][1] = 4  # red
-                pending_deploy = None
-        if pending_ctrl5v is not None:
-            idx, sent_at = pending_ctrl5v
-            if now - sent_at > PING_TIMEOUT_S:
-                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
-                log[idx][1] = 4  # red
-                pending_ctrl5v = None
-        if pending_adcs is not None:
-            idx, sent_at = pending_adcs
-            if now - sent_at > PING_TIMEOUT_S:
-                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
-                log[idx][1] = 4  # red
-                pending_adcs = None
-        if pending_adcs_enable is not None:
-            idx, sent_at = pending_adcs_enable
-            if now - sent_at > PING_TIMEOUT_S:
-                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
-                log[idx][1] = 4  # red
-                pending_adcs_enable = None
-        if pending_adcs_zero is not None:
-            idx, sent_at = pending_adcs_zero
-            if now - sent_at > PING_TIMEOUT_S:
-                log[idx][0] = log[idx][0].replace(" → …", " → NO ACK")
-                log[idx][1] = 4  # red
-                pending_adcs_zero = None
+        for key, p in list(pending.items()):
+            if now - p.sent_at > p.timeout:
+                log[p.log_idx][0] = log[p.log_idx][0].replace(" → …", p.timeout_msg)
+                log[p.log_idx][1] = 4
+                del pending[key]
 
-        # draw status bar + log
+        # ── Draw ──────────────────────────────────────────────────────────────
         stdscr.erase()
         try:
             stdscr.addstr(0, 0, " " * (w - 1), curses.color_pair(2))
@@ -607,7 +662,6 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             except curses.error:
                 pass
 
-        # draw separator + input
         try:
             stdscr.addstr(h - 2, 0, "─" * (w - 1), curses.color_pair(2))
             prompt = f">> {input_buf}"
@@ -617,7 +671,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             pass
         stdscr.refresh()
 
-        # input
+        # ── Input ─────────────────────────────────────────────────────────────
         ch = stdscr.getch()
         if ch == curses.KEY_RESIZE:
             pass
@@ -631,9 +685,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     pending_pings[ping_arg] = (len(log) - 1, time.time())
                     ping_arg += 1
                 elif cmd.lower() == "deploy":
-                    cmd_q.put(build_uplink(CMD_DEPLOY))
-                    log.append([f"[{ts}] DEPLOY → …", 3])
-                    pending_deploy = (len(log) - 1, time.time())
+                    send_cmd(CMD_DEPLOY, b"", "DEPLOY → …",
+                             "deploy", DEPLOY_TIMEOUT_S, " → NO RETURN PACKET")
                 elif cmd.lower().startswith("setres") or cmd.lower().startswith("resolution"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in CAMERA_RES_CODES:
@@ -641,9 +694,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         log.append([f"[{ts}] CAM RES CMD invalid — use `setres <{valid}>`", 4])
                     else:
                         resolution = parts[1]
-                        payload = bytes([CAMERA_RES_CODES[resolution]])
-                        cmd_q.put(build_uplink(CMD_SET_CAMERA_RES, payload))
-                        log.append([f"[{ts}] CAM RES CMD sent — {resolution}", 3])
+                        send_cmd(CMD_SET_CAMERA_RES, bytes([CAMERA_RES_CODES[resolution]]),
+                                 f"CAM RES CMD sent — {resolution}")
                 elif cmd.lower().startswith("photo"):
                     parts = cmd.split()
                     count = 1
@@ -663,7 +715,6 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         log.append([f"[{ts}] PHOTO CMD invalid — count must be > 0 and spacing <= 65.535 s", 4])
                     else:
                         payload = bytes([count & 0xFF]) + struct.pack("<H", spacing_ms)
-                        cmd_q.put(build_uplink(CMD_TAKE_PHOTO, payload))
                         if count > 1:
                             burst_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             pending_burst_request = {
@@ -672,14 +723,13 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             }
                         else:
                             pending_burst_request = None
-                        log.append([f"[{ts}] PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s", 3])
+                        send_cmd(CMD_TAKE_PHOTO, payload,
+                                 f"PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s")
                 elif cmd.lower().startswith("adcs"):
                     parts = cmd.split()
                     sub = parts[1].lower() if len(parts) >= 2 else ""
                     if sub == "zero":
-                        cmd_q.put(build_uplink(CMD_ADCS_ZERO))
-                        log.append([f"[{ts}] ADCS ZERO CMD sent → …", 3])
-                        pending_adcs_zero = (len(log) - 1, time.time())
+                        send_cmd(CMD_ADCS_ZERO, b"", "ADCS ZERO CMD sent → …", "adcs_zero")
                     elif sub == "enable":
                         valid = ("on", "off", "1", "0")
                         flags_raw = [p.lower() for p in parts[2:]]
@@ -687,10 +737,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             log.append([f"[{ts}] ADCS ENABLE CMD invalid — use `adcs enable <x> <y> <z>` (on/off)", 4])
                         else:
                             flags = [1 if p in ("on", "1") else 0 for p in flags_raw]
-                            cmd_q.put(build_uplink(CMD_ADCS_ENABLE, bytes(flags)))
-                            xs, ys, zs = ("ON" if f else "OFF" for f in flags)
-                            log.append([f"[{ts}] ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", 3])
-                            pending_adcs_enable = (len(log) - 1, time.time())
+                            xs, ys, zs = ["ON" if f else "OFF" for f in flags]
+                            send_cmd(CMD_ADCS_ENABLE, bytes(flags),
+                                     f"ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", "adcs_enable")
                     elif sub == "set":
                         try:
                             if len(parts) != 5:
@@ -701,23 +750,41 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         except ValueError:
                             log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <roll_deg> <pitch_deg> <yaw_deg>`", 4])
                         else:
-                            w, x, y, z = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
-                            payload = struct.pack("<ffff", w, x, y, z)
-                            cmd_q.put(build_uplink(CMD_ADCS_SETPOINT, payload))
-                            log.append([f"[{ts}] ADCS SET CMD sent — "
-                                        f"roll={roll_deg:.1f}° pitch={pitch_deg:.1f}° yaw={yaw_deg:.1f}° → …", 3])
-                            pending_adcs = (len(log) - 1, time.time())
+                            qw, qx, qy, qz = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
+                            send_cmd(CMD_ADCS_SETPOINT, struct.pack("<ffff", qw, qx, qy, qz),
+                                     f"ADCS SET CMD sent — "
+                                     f"roll={roll_deg:.1f}° pitch={pitch_deg:.1f}° yaw={yaw_deg:.1f}° → …",
+                                     "adcs")
+                    elif sub == "pid":
+                        AXIS_MAP = {"x": 0, "y": 1, "z": 2, "0": 0, "1": 1, "2": 2}
+                        try:
+                            if len(parts) != 6:
+                                raise ValueError
+                            axis_s = parts[2].lower()
+                            if axis_s not in AXIS_MAP:
+                                raise ValueError
+                            axis_n = AXIS_MAP[axis_s]
+                            kp = float(parts[3])
+                            ki = float(parts[4])
+                            kd = float(parts[5])
+                        except ValueError:
+                            log.append([f"[{ts}] ADCS PID CMD invalid — use `adcs pid <x|y|z> <kp> <ki> <kd>`", 4])
+                        else:
+                            axis_label = ("X", "Y", "Z")[axis_n]
+                            send_cmd(CMD_ADCS_SET_PID, struct.pack("<Bfff", axis_n, kp, ki, kd),
+                                     f"ADCS PID CMD sent — {axis_label} "
+                                     f"Kp={kp:.6f} Ki={ki:.6f} Kd={kd:.6f} → …",
+                                     "adcs_pid")
                     else:
-                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/enable/zero`", 4])
+                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/enable/zero/pid`", 4])
                 elif cmd.lower().startswith("ctrl5v"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):
                         log.append([f"[{ts}] CTRL5V CMD invalid — use `ctrl5v on/off`", 4])
                     else:
                         state = 1 if parts[1] in ("on", "1") else 0
-                        cmd_q.put(build_uplink(CMD_CTRL_5V, bytes([state])))
-                        log.append([f"[{ts}] CTRL5V CMD sent — {'ON' if state else 'OFF'} → …", 3])
-                        pending_ctrl5v = (len(log) - 1, time.time())
+                        send_cmd(CMD_CTRL_5V, bytes([state]),
+                                 f"CTRL5V CMD sent — {'ON' if state else 'OFF'} → …", "ctrl5v")
                 else:
                     log.append([f">> {cmd}", 3])
             input_buf = ""
