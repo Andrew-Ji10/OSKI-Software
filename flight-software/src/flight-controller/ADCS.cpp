@@ -1,4 +1,5 @@
 #include "ADCS.h"
+#include "CAM.h"
 
 namespace ADCS {
 
@@ -309,7 +310,11 @@ uint32_t task_runADCS() {
   ramp_y = clampf(ramp_y, -RAMP_MAX, RAMP_MAX);
   ramp_z = clampf(ramp_z, -RAMP_MAX, RAMP_MAX);
 
-  sendADCSCommand(ramp_x, ramp_y, ramp_z);
+  if (CAM::isTransmitting()) {
+    sendADCSCommand(0.0f, 0.0f, 0.0f);
+  } else {
+    sendADCSCommand(ramp_x, ramp_y, ramp_z);
+  }
 
   last_qw = qw; last_qx = qx; last_qy = qy; last_qz = qz;
   last_wx = wx; last_wy = wy; last_wz = wz;
@@ -324,6 +329,7 @@ uint32_t task_runADCS() {
 // ADCS_TELEMETRY (56 bytes):
 //   setpoint quat (4×f) | current quat (4×f) | gyro (3×f) | integrators (3×f)
 uint32_t task_sendADCSTelem() {
+  if (CAM::isTransmitting()) return 1000000;
   Packet p;
   p.id = ADCS_TELEMETRY;
   p.length = 0;
@@ -348,6 +354,7 @@ uint32_t task_sendADCSTelem() {
 // ADCS_PARAMS (39 bytes):
 //   Kp/Ki/Kd per axis (9×f) | x/y/z enabled (3×uint8)
 uint32_t task_sendADCSParams() {
+  if (CAM::isTransmitting()) return 5000000;
   Packet p;
   p.id = ADCS_PARAMS;
   p.length = 0;

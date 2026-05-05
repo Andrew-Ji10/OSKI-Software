@@ -389,6 +389,10 @@ namespace CAM {
         }
     }
 
+    bool isTransmitting() {
+        return txPhase != TX_IDLE;
+    }
+
     void init() {
         CamSerial.setRxBufferSize(CAM_RX_BUFFER_BYTES);
         CamSerial.begin(CAM_BAUD, SERIAL_8N1, CAM_RX_PIN, CAM_TX_PIN);

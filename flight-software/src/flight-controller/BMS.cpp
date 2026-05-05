@@ -1,4 +1,5 @@
 #include "BMS.h"
+#include "CAM.h"
 #include "Common.h"
 #include "RadioComms.h"
 #include <Wire.h>
@@ -55,6 +56,7 @@ void init() {
 //   [14-17] internal temp, float °C
 //   [18-21] TS temp, float °C (NaN if out of range)
 uint32_t task_sendBMSTelem() {
+    if (CAM::isTransmitting()) return 1000 * 1000;
     Packet pkt;
     pkt.id = BMS_TELEMETRY;
     pkt.length = 0;

@@ -5,5 +5,6 @@
 namespace CAM {
   void init();
   uint32_t task_processCamera();
+  bool isTransmitting();
 }
 #endif
