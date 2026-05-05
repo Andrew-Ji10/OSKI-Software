@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "Common.h"
-#include "BMS.h"
+// #include "BMS.h"
 #include "RadioComms.h"
 #include "CAM.h"
 #include "ADCS.h"
@@ -77,7 +77,7 @@ Task taskTable[] = {
   //{task_helloWorld, 0, true},
   {task_autoDeploy, 0, true}, // must be first
   {task_blinkLEDs, 0, true},
-  {BMS::task_sendBMSTelem, 0, true},
+  // {BMS::task_sendBMSTelem, 0, true},
   {ADCS::task_runADCS, 0, true},
   {ADCS::task_sendADCSTelem, 0, true},
   {ADCS::task_sendADCSParams, 0, true},
@@ -143,7 +143,7 @@ void setup() {
   Serial.begin(115200);
   initLEDs();
   RadioComms::init();
-  BMS::init();
+  // BMS::init();
   CAM::init();
   ADCS::init();
 
