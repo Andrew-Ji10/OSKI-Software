@@ -79,6 +79,8 @@ Task taskTable[] = {
   {task_blinkLEDs, 0, true},
   {BMS::task_sendBMSTelem, 0, true},
   {ADCS::task_runADCS, 0, true},
+  {ADCS::task_sendADCSTelem, 0, true},
+  {ADCS::task_sendADCSParams, 0, true},
   {CAM::task_processCamera, 0, true}
 };
 
