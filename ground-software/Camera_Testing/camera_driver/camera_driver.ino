@@ -33,7 +33,10 @@ enum CameraResolution : uint8_t {
     CAM_RES_VGA  = 1,
     CAM_RES_SVGA = 2,
     CAM_RES_XGA  = 3,
-    CAM_RES_HD   = 4
+    CAM_RES_HD   = 4,
+    CAM_RES_SXGA = 5,
+    CAM_RES_UXGA = 6,
+    CAM_RES_QXGA = 7
 };
 
 struct BufferedImage {
@@ -63,7 +66,10 @@ static uint32_t estimatedBytesForResolution(uint8_t resolution) {
         case CAM_RES_SVGA: return 64UL * 1024UL;
         case CAM_RES_XGA:  return 80UL * 1024UL;
         case CAM_RES_HD:   return 96UL * 1024UL;
-        default:           return 96UL * 1024UL;
+        case CAM_RES_SXGA: return 112UL * 1024UL;
+        case CAM_RES_UXGA: return 128UL * 1024UL;
+        case CAM_RES_QXGA: return 192UL * 1024UL;
+        default:           return 192UL * 1024UL;
     }
 }
 
@@ -78,6 +84,9 @@ static bool applyResolution(uint8_t resolution) {
         case CAM_RES_SVGA: frameSize = FRAMESIZE_SVGA; break;
         case CAM_RES_XGA:  frameSize = FRAMESIZE_XGA; break;
         case CAM_RES_HD:   frameSize = FRAMESIZE_HD; break;
+        case CAM_RES_SXGA: frameSize = FRAMESIZE_SXGA; break;
+        case CAM_RES_UXGA: frameSize = FRAMESIZE_UXGA; break;
+        case CAM_RES_QXGA: frameSize = FRAMESIZE_QXGA; break;
         default:           return false;
     }
 
@@ -218,7 +227,7 @@ static void handleSetResolutionCommand() {
     if (!LinkSerial.available()) return;
 
     uint8_t resolution = (uint8_t)LinkSerial.read();
-    if (resolution > CAM_RES_HD) {
+    if (resolution > CAM_RES_QXGA) {
         sendResolutionStatus(PHOTO_STATUS_UNSUPPORTED, currentResolution);
         return;
     }

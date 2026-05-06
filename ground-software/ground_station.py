@@ -93,9 +93,31 @@ CAMERA_RES_CODES = {
     "svga": 2,
     "xga": 3,
     "hd": 4,
+    "sxga": 5,
+    "uxga": 6,
+    "qxga": 7,
 }
 
 CAMERA_RES_NAMES = {value: key for key, value in CAMERA_RES_CODES.items()}
+
+RESET_REASON_NAMES = {
+    0: "unknown",
+    1: "poweron",
+    2: "ext",
+    3: "software",
+    4: "panic",
+    5: "int_wdt",
+    6: "task_wdt",
+    7: "wdt",
+    8: "deepsleep",
+    9: "brownout",
+    10: "sdio",
+    11: "usb",
+    12: "jtag",
+    13: "efuse",
+    14: "pwr_glitch",
+    15: "cpu_lockup",
+}
 
 # LoRa addressing — must match ground station FW
 FC_ADDR    = 0xAA
@@ -140,6 +162,14 @@ def euler_to_quat(roll_deg, pitch_deg, yaw_deg):
     y_ = cr * sp * cy + sr * cp * sy
     z =  cr * cp * sy - sr * sp * cy
     return w, x, y_, z
+
+def fmt_uptime(total_seconds):
+    hours, rem = divmod(int(total_seconds), 3600)
+    minutes, seconds = divmod(rem, 60)
+    return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+
+def reset_reason_name(code):
+    return RESET_REASON_NAMES.get(int(code), f"code={int(code)}")
 
 def build_uplink(pkt_id, data=b""):
     """Return a hex string the ground station FW will relay verbatim over LoRa."""
@@ -211,10 +241,15 @@ def fmt_packet(pkt_id, raw, rssi, snr):
         current  = struct.unpack_from("<i", raw, 10)[0]
         int_temp = struct.unpack_from("<f", raw, 14)[0]
         ts_temp  = struct.unpack_from("<f", raw, 18)[0]
-        return (f"[{ts}] BMS — "
-                f"{c1}/{c2}/{c3}/{c4} mV  stack={stack} mV  "
-                f"current={current} mA  "
-                f"intTemp={int_temp:.1f}°C  tsTemp={ts_temp:.1f}°C")
+        msg = (f"[{ts}] BMS — "
+               f"{c1}/{c2}/{c3}/{c4} mV  stack={stack} mV  "
+               f"current={current} mA  "
+               f"intTemp={int_temp:.1f}°C  tsTemp={ts_temp:.1f}°C")
+        if len(raw) >= 27:
+            uptime_s = struct.unpack_from("<I", raw, 22)[0]
+            reset_reason = raw[26]
+            msg += f"  uptime={fmt_uptime(uptime_s)}  reset={reset_reason_name(reset_reason)}"
+        return msg
     return f"[{ts}] PKT id={pkt_id} len={len(raw)} {raw.hex()}"
 
 _TS_PAD = " " * 11  # aligns continuation lines under content after "[HH:MM:SS] "
@@ -260,12 +295,16 @@ def influx_fields(pkt_id, raw):
         current  = struct.unpack_from("<i", raw, 10)[0]
         int_temp = struct.unpack_from("<f", raw, 14)[0]
         ts_temp  = struct.unpack_from("<f", raw, 18)[0]
-        return {
+        fields = {
             "cell1_mV": int(c1), "cell2_mV": int(c2),
             "cell3_mV": int(c3), "cell4_mV": int(c4),
             "stack_mV": int(stack), "current_mA": int(current),
             "intTemp_C": float(int_temp), "tsTemp_C": float(ts_temp),
         }
+        if len(raw) >= 27:
+            fields["uptime_s"] = int(struct.unpack_from("<I", raw, 22)[0])
+            fields["reset_reason"] = int(raw[26])
+        return fields
     if pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
         v = struct.unpack_from("<14f", raw, 0)
         return {
@@ -310,7 +349,7 @@ def write_point(write_api, pkt_id, raw, rssi, snr):
     write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=p)
 
 # ── Curses UI ───────────────────────────────────────────────────────────────────
-# Color pairs: 1=green (data), 2=cyan (system), 3=yellow (ping/cmd), 4=red (no ack)
+# Color pairs: 1=green (data), 2=cyan (system), 3=yellow (attention), 4=red (error), 5=magenta (user commands)
 
 def run_ui(stdscr, initial_port, write_api, influx_status):
     curses.curs_set(1)
@@ -320,6 +359,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     curses.init_pair(2, curses.COLOR_CYAN,   curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_RED,    curses.COLOR_BLACK)
+    curses.init_pair(5, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
 
     log           = []
     input_buf     = ""
@@ -348,23 +388,43 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
 
     # ── Shared helpers ────────────────────────────────────────────────────────
 
-    def resolve(key, msg, rssi, snr, color=1):
+    def resolve(key, msg, rssi, snr, color=None):
         """Update a pending command's log line with an ACK message."""
         p = pending.pop(key, None)
         if p is None:
             return
         ts = log[p.log_idx][0][1:9]
         log[p.log_idx][0] = f"[{ts}] {msg}  RSSI={rssi} SNR={snr}"
-        log[p.log_idx][1] = color
+        if color is not None:
+            log[p.log_idx][1] = color
 
     def send_cmd(pkt_id, payload, log_msg, pending_key=None,
                  timeout=PING_TIMEOUT_S, timeout_msg=" → NO ACK"):
         """Enqueue an uplink, append a log line, and register a pending entry."""
         cmd_q.put(build_uplink(pkt_id, payload))
         ts = datetime.now().strftime("%H:%M:%S")
-        log.append([f"[{ts}] {log_msg}", 3])
+        log.append([f"[{ts}] {log_msg}", 5])
         if pending_key is not None:
             pending[pending_key] = PendingCmd(len(log) - 1, time.time(), timeout, timeout_msg)
+
+    def show_help(ts):
+        valid_res = ", ".join(CAMERA_RES_CODES.keys())
+        help_lines = [
+            f"[{ts}] Commands:",
+            f"{_TS_PAD}  help | commands | ?",
+            f"{_TS_PAD}  ping",
+            f"{_TS_PAD}  deploy",
+            f"{_TS_PAD}  setres <{valid_res}>",
+            f"{_TS_PAD}  photo <count> <spacing_s>",
+            f"{_TS_PAD}  adcs zero",
+            f"{_TS_PAD}  adcs enable <on|off> <on|off> <on|off>",
+            f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
+            f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
+            f"{_TS_PAD}  ctrl5v <on|off>",
+            f"{_TS_PAD}  reset",
+        ]
+        for line in help_lines:
+            log.append([line, 2])
 
     # ── ACK handlers (one per packet ID) ──────────────────────────────────────
 
@@ -404,7 +464,52 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             msg = "ADCS PID ACK"
         resolve("adcs_pid", msg, rssi, snr)
 
+    def on_take_photo(raw, rssi, snr):
+        nonlocal pending_burst_request, active_burst
+
+        status = raw[0] if len(raw) >= 1 else 255
+        if status == 0:
+            resolve("photo", "PHOTO ACK — triggered", rssi, snr)
+            if pending_burst_request is not None:
+                if pending_burst_request["count"] > 1:
+                    active_burst = {
+                        "folder": pending_burst_request["folder"],
+                        "count": pending_burst_request["count"],
+                        "saved": 0,
+                    }
+                    ts = datetime.now().strftime("%H:%M:%S")
+                    log.append([f"[{ts}] PHOTO BURST — saving to {active_burst['folder']}", 2])
+                pending_burst_request = None
+        elif status == 2:
+            resolve("photo", "PHOTO NACK — invalid photo count", rssi, snr, color=4)
+            pending_burst_request = None
+        elif status == 3:
+            resolve("photo", "PHOTO NACK — camera buffer full", rssi, snr, color=4)
+            pending_burst_request = None
+        elif status == 4:
+            resolve("photo", "PHOTO NACK — camera comms error", rssi, snr, color=4)
+            pending_burst_request = None
+        else:
+            resolve("photo", "PHOTO NACK — busy/error", rssi, snr, color=4)
+            pending_burst_request = None
+
+    def on_camera_res(raw, rssi, snr):
+        status = raw[0] if len(raw) >= 1 else 255
+        resolution = raw[1] if len(raw) >= 2 else 255
+        res_name = CAMERA_RES_NAMES.get(resolution, f"code={resolution}")
+
+        if status == 0:
+            resolve("cam_res", f"CAM RES ACK — {res_name}", rssi, snr)
+        elif status == 1:
+            resolve("cam_res", f"CAM RES NACK — busy  current={res_name}", rssi, snr, color=4)
+        elif status == 5:
+            resolve("cam_res", f"CAM RES NACK — unsupported  current={res_name}", rssi, snr, color=4)
+        else:
+            resolve("cam_res", f"CAM RES NACK — error status={status} current={res_name}", rssi, snr, color=4)
+
     ack_dispatch = {
+        CMD_TAKE_PHOTO:      on_take_photo,
+        CMD_SET_CAMERA_RES:  on_camera_res,
         CMD_DEPLOY:        on_deploy,
         CMD_CTRL_5V:       on_ctrl5v,
         CMD_ADCS_SETPOINT: on_adcs_setpoint,
@@ -481,47 +586,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 ts = log[idx][0][1:9]
                                 log[idx][0] = (f"[{ts}] PING #{echoed} → "
                                                f"val={val}  RSSI={rssi} SNR={snr}")
-                                log[idx][1] = 1
+                                log[idx][1] = 5
                             else:
                                 log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
-                        elif pkt_id == CMD_TAKE_PHOTO:
-                            ts = datetime.now().strftime("%H:%M:%S")
-                            if len(raw) >= 1 and raw[0] == 0:
-                                log.append([f"[{ts}] PHOTO ACK — triggered  RSSI={rssi} SNR={snr}", 1])
-                                if pending_burst_request is not None:
-                                    if pending_burst_request["count"] > 1:
-                                        active_burst = {
-                                            "folder": pending_burst_request["folder"],
-                                            "count": pending_burst_request["count"],
-                                            "saved": 0,
-                                        }
-                                        log.append([f"[{ts}] PHOTO BURST — saving to {active_burst['folder']}", 2])
-                                    pending_burst_request = None
-                            elif len(raw) >= 1 and raw[0] == 2:
-                                log.append([f"[{ts}] PHOTO NACK — invalid photo count  RSSI={rssi} SNR={snr}", 4])
-                                pending_burst_request = None
-                            elif len(raw) >= 1 and raw[0] == 3:
-                                log.append([f"[{ts}] PHOTO NACK — camera buffer full  RSSI={rssi} SNR={snr}", 4])
-                                pending_burst_request = None
-                            elif len(raw) >= 1 and raw[0] == 4:
-                                log.append([f"[{ts}] PHOTO NACK — camera comms error  RSSI={rssi} SNR={snr}", 4])
-                                pending_burst_request = None
-                            else:
-                                log.append([f"[{ts}] PHOTO ACK — busy/error  RSSI={rssi} SNR={snr}", 4])
-                                pending_burst_request = None
-                        elif pkt_id == CMD_SET_CAMERA_RES:
-                            ts = datetime.now().strftime("%H:%M:%S")
-                            status = raw[0] if len(raw) >= 1 else 255
-                            resolution = raw[1] if len(raw) >= 2 else 255
-                            res_name = CAMERA_RES_NAMES.get(resolution, f"code={resolution}")
-                            if status == 0:
-                                log.append([f"[{ts}] CAM RES ACK — {res_name}  RSSI={rssi} SNR={snr}", 1])
-                            elif status == 1:
-                                log.append([f"[{ts}] CAM RES NACK — busy  current={res_name}  RSSI={rssi} SNR={snr}", 4])
-                            elif status == 5:
-                                log.append([f"[{ts}] CAM RES NACK — unsupported  current={res_name}  RSSI={rssi} SNR={snr}", 4])
-                            else:
-                                log.append([f"[{ts}] CAM RES NACK — error status={status} current={res_name}  RSSI={rssi} SNR={snr}", 4])
                         elif pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
                             ts = datetime.now().strftime("%H:%M:%S")
                             for line in fmt_adcs_telem(ts, raw, rssi, snr):
@@ -702,9 +769,11 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             cmd = input_buf.strip()
             if cmd:
                 ts = datetime.now().strftime("%H:%M:%S")
-                if cmd.lower() == "ping":
+                if cmd.lower() in ("help", "commands", "?"):
+                    show_help(ts)
+                elif cmd.lower() == "ping":
                     cmd_q.put(build_uplink(CMD_PING, struct.pack("<I", ping_arg)))
-                    log.append([f"[{ts}] PING #{ping_arg} → …", 3])
+                    log.append([f"[{ts}] PING #{ping_arg} → …", 5])
                     pending_pings[ping_arg] = (len(log) - 1, time.time())
                     ping_arg += 1
                 elif cmd.lower() == "deploy":
@@ -718,7 +787,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     else:
                         resolution = parts[1]
                         send_cmd(CMD_SET_CAMERA_RES, bytes([CAMERA_RES_CODES[resolution]]),
-                                 f"CAM RES CMD sent — {resolution}")
+                                 f"CAM RES CMD sent — {resolution} → …", "cam_res")
                 elif cmd.lower().startswith("photo"):
                     parts = cmd.split()
                     count = 1
@@ -747,7 +816,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         else:
                             pending_burst_request = None
                         send_cmd(CMD_TAKE_PHOTO, payload,
-                                 f"PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s")
+                                 f"PHOTO CMD sent — count={count} spacing={spacing_s:.3f} s → …",
+                                 "photo")
                 elif cmd.lower().startswith("adcs"):
                     parts = cmd.split()
                     sub = parts[1].lower() if len(parts) >= 2 else ""
@@ -812,7 +882,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     send_cmd(CMD_RESET, b"", "RESET CMD sent → …",
                              "reset", PING_TIMEOUT_S, " → NO ACK")
                 else:
-                    log.append([f">> {cmd}", 3])
+                    log.append([f">> {cmd}", 5])
             input_buf = ""
         elif ch in (curses.KEY_BACKSPACE, 127, 8):
             input_buf = input_buf[:-1]

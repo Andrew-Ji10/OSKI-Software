@@ -200,7 +200,7 @@ Images are broken into 246-byte chunks and sent as `CAM_IMAGE_DATA` packets. Eac
 
 | Parameter       | Value       |
 |-----------------|-------------|
-| Max image size  | 115200 bytes |
+| Max image size  | 131072 bytes |
 | Chunk size      | 246 bytes   |
 | Max retries     | 3           |
 | Retry timeout   | 3000 ms     |
@@ -231,6 +231,9 @@ TX_IDLE → TX_META → TX_CHUNKS → TX_SEND_DONE → TX_WAIT_FEEDBACK → TX_I
 | SVGA        | 2     |
 | XGA         | 3     |
 | HD          | 4     |
+| SXGA        | 5     |
+| UXGA        | 6     |
+| QXGA        | 7     |
 
 #### Key Functions
 
@@ -335,7 +338,7 @@ All packets share a fixed 4-byte header followed by a variable payload:
 
 Housekeeping data (emitted by main.cpp).
 
-### BMS Telemetry (`BMS_TELEMETRY` = 101) — 22 bytes
+### BMS Telemetry (`BMS_TELEMETRY` = 101) — 27 bytes
 
 | Field | Type | Unit |
 |-------|------|------|
@@ -344,6 +347,8 @@ Housekeeping data (emitted by main.cpp).
 | Current | int32 | mA |
 | Internal temperature | float | °C |
 | Thermistor temperature | float | °C (NaN if out of range) |
+| Uptime | uint32 | s |
+| Last reset reason | uint8 | `esp_reset_reason_t` code |
 
 ### ADCS Telemetry (`ADCS_TELEMETRY` = 102) — 56 bytes
 

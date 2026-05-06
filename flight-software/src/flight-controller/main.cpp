@@ -16,6 +16,11 @@ static const uint8_t deployTime = 7; // seconds of burnwire current
 static const bool autoDeploy = false; // whether to automatically deploy at T30
 
 #define CTRL_5V 42
+#define CRTL_3V3 40
+
+#define WDT_FEED_PIN 38
+#define WDT_SET0 36
+#define WDT_SET1 37
 
 /**
  * @brief This code implements a task system that allows for the execution of multiple tasks at different intervals.
@@ -73,6 +78,12 @@ uint32_t task_autoDeploy() {
   }
 }
 
+uint32_t feedWatchdog() {
+  // feed the watchdog here
+  digitalWrite(WDT_FEED_PIN, !digitalRead(WDT_FEED_PIN)); // toggle pin to feed watchdog
+  return 10000000; // feed every 10 seconds
+}
+
 Task taskTable[] = {
   //{task_helloWorld, 0, true},
   {task_autoDeploy, 0, true}, // must be first
@@ -81,7 +92,8 @@ Task taskTable[] = {
   {ADCS::task_runADCS, 0, true},
   {ADCS::task_sendADCSTelem, 0, true},
   {ADCS::task_sendADCSParams, 0, true},
-  {CAM::task_processCamera, 0, true}
+  {CAM::task_processCamera, 0, true},
+  {feedWatchdog, 0, true}
 };
 
 #define TASK_COUNT (sizeof(taskTable) / sizeof (struct Task))
@@ -168,6 +180,13 @@ void setup() {
 
   pinMode(CTRL_5V, OUTPUT);
   digitalWrite(CTRL_5V, HIGH);
+  pinMode(CRTL_3V3, OUTPUT);
+  digitalWrite(CRTL_3V3, HIGH);
+  pinMode(WDT_FEED_PIN, OUTPUT);
+  pinMode(WDT_SET0, OUTPUT);
+  pinMode(WDT_SET1, OUTPUT);
+  digitalWrite(WDT_SET0, HIGH); 
+  digitalWrite(WDT_SET1, LOW);
 
   Serial.begin(115200);
   initLEDs();
