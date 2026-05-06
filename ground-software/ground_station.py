@@ -58,6 +58,7 @@ CMD_CTRL_5V         = 5
 CMD_ADCS_ENABLE     = 6
 CMD_ADCS_ZERO       = 7
 CMD_ADCS_SET_PID    = 8
+CMD_RESET           = 9
 BMS_TELEMETRY  = 101
 ADCS_TELEMETRY = 102
 ADCS_PARAMS    = 103
@@ -82,6 +83,7 @@ MEAS_NAME = {
     CMD_SET_CAMERA_RES: "set_camera_res",
     CMD_DEPLOY:         "deploy",
     CMD_CTRL_5V:        "ctrl_5v",
+    CMD_RESET:          "reset",
     BMS_TELEMETRY:      "bms",
 }
 
@@ -109,6 +111,21 @@ class PendingCmd:
     timeout_msg: str   = " → NO ACK"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
+
+def quat_to_euler(w, x, y, z):
+    """ZYX convention inverse of euler_to_quat — returns (roll, pitch, yaw) in degrees."""
+    sinr = 2.0 * (w * x + y * z)
+    cosr = 1.0 - 2.0 * (x * x + y * y)
+    roll = math.degrees(math.atan2(sinr, cosr))
+
+    sinp = 2.0 * (w * y - z * x)
+    pitch = math.degrees(math.asin(max(-1.0, min(1.0, sinp))))
+
+    siny = 2.0 * (w * z + x * y)
+    cosy = 1.0 - 2.0 * (y * y + z * z)
+    yaw = math.degrees(math.atan2(siny, cosy))
+
+    return roll, pitch, yaw
 
 def euler_to_quat(roll_deg, pitch_deg, yaw_deg):
     """ZYX convention: yaw applied first, then pitch, then roll."""
@@ -204,10 +221,12 @@ _TS_PAD = " " * 11  # aligns continuation lines under content after "[HH:MM:SS] 
 
 def fmt_adcs_telem(ts, raw, rssi, snr):
     v = struct.unpack_from("<14f", raw, 0)
+    sp_r,  sp_p,  sp_y  = quat_to_euler(v[0], v[1], v[2], v[3])
+    cur_r, cur_p, cur_y = quat_to_euler(v[4], v[5], v[6], v[7])
     return [
         f"[{ts}] ADCS TELEM  RSSI={rssi} SNR={snr:.1f}",
-        f"{_TS_PAD}  setpoint  w={v[0]:+.4f} x={v[1]:+.4f} y={v[2]:+.4f} z={v[3]:+.4f}",
-        f"{_TS_PAD}  current   w={v[4]:+.4f} x={v[5]:+.4f} y={v[6]:+.4f} z={v[7]:+.4f}",
+        f"{_TS_PAD}  setpoint  roll={sp_r:+8.3f}°  pitch={sp_p:+8.3f}°  yaw={sp_y:+8.3f}°",
+        f"{_TS_PAD}  current   roll={cur_r:+8.3f}°  pitch={cur_p:+8.3f}°  yaw={cur_y:+8.3f}°",
         f"{_TS_PAD}  gyro r/s  x={v[8]:+.4f} y={v[9]:+.4f} z={v[10]:+.4f}",
         f"{_TS_PAD}  integral  x={v[11]:+.6f} y={v[12]:+.6f} z={v[13]:+.6f}",
     ]
@@ -373,6 +392,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             msg = "ADCS ENABLE ACK"
         resolve("adcs_enable", msg, rssi, snr)
 
+    def on_reset(raw, rssi, snr):
+        resolve("reset", "RESET ACK — FC restarting", rssi, snr)
+
     def on_adcs_pid(raw, rssi, snr):
         if len(raw) >= 13:
             axis_n, kp, ki, kd = struct.unpack_from("<Bfff", raw, 0)
@@ -389,6 +411,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         CMD_ADCS_ZERO:     on_adcs_zero,
         CMD_ADCS_ENABLE:   on_adcs_enable,
         CMD_ADCS_SET_PID:  on_adcs_pid,
+        CMD_RESET:         on_reset,
     }
 
     # ── Serial thread ─────────────────────────────────────────────────────────
@@ -785,6 +808,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                         state = 1 if parts[1] in ("on", "1") else 0
                         send_cmd(CMD_CTRL_5V, bytes([state]),
                                  f"CTRL5V CMD sent — {'ON' if state else 'OFF'} → …", "ctrl5v")
+                elif cmd.lower() == "reset":
+                    send_cmd(CMD_RESET, b"", "RESET CMD sent → …",
+                             "reset", PING_TIMEOUT_S, " → NO ACK")
                 else:
                     log.append([f">> {cmd}", 3])
             input_buf = ""

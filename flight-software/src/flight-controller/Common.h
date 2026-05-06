@@ -12,6 +12,7 @@
 #define CMD_DEPLOY 3
 #define CMD_SET_CAMERA_RES 4
 #define CMD_CTRL_5V 5
+#define CMD_RESET   9
 
 
 #define HSK_TELEMETRY  100

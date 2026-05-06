@@ -1,0 +1,852 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 12,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "#EAB839", "value": 11000 }, { "color": "green", "value": 12500 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["stack_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Battery Voltage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "#EAB839", "value": 2700 }, { "color": "green", "value": 3200 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 6, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["cell1_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Cell 1",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "#EAB839", "value": 2700 }, { "color": "green", "value": 3200 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 10, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["cell3_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Cell 3",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }, { "color": "green", "value": 0 }] },
+          "unit": "mamp"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 5, "x": 14, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["current_mA"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Current",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 5, "x": 19, "y": 0 },
+      "id": 9,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["intTemp_C"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "EPS Board Temp",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "#EAB839", "value": 2700 }, { "color": "green", "value": 3200 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 6, "y": 3 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["cell2_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Cell 2",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "#EAB839", "value": 2700 }, { "color": "green", "value": 3200 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 10, "y": 3 },
+      "id": 8,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["cell3_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Cell 3",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 5, "x": 19, "y": 3 },
+      "id": 10,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["tsTemp_C"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Thermistor",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6, "drawStyle": "line", "fillOpacity": 0, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] },
+          "unit": "mvolt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 10, "x": 0, "y": 6 },
+      "id": 1,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [
+        { "alias": "Cell 1", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["cell1_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "Cell 2", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "hide": false, "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "B", "resultFormat": "time_series", "select": [[{ "params": ["cell2_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "Cell 3", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "hide": false, "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "C", "resultFormat": "time_series", "select": [[{ "params": ["cell3_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "Cell 4", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "hide": false, "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "D", "resultFormat": "time_series", "select": [[{ "params": ["cell4_mV"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }
+      ],
+      "title": "Cell Voltages",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6, "drawStyle": "line", "fillOpacity": 0, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "mamp"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 9, "x": 10, "y": 6 },
+      "id": 7,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["current_mA"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Current",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "dB"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 6 },
+      "id": 11,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["rssi"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "RSSI",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 10 },
+      "id": 12,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "bms", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["snr"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "SNR",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 14 },
+      "id": 13,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["qw"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Attitude qW",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 3, "y": 14 },
+      "id": 14,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["qx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Attitude qX",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 6, "y": 14 },
+      "id": 15,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["qy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Attitude qY",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 9, "y": 14 },
+      "id": 16,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["qz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Attitude qZ",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 14 },
+      "id": 17,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["wx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Gyro X (rad/s)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 14 },
+      "id": 18,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["wy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Gyro Y (rad/s)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 14 },
+      "id": 19,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["wz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Gyro Z (rad/s)",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "cyan" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "cyan", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 17 },
+      "id": 20,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["des_qw"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Setpoint qW",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "cyan" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "cyan", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 3, "y": 17 },
+      "id": 21,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["des_qx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Setpoint qX",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "cyan" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "cyan", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 6, "y": 17 },
+      "id": 22,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["des_qy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Setpoint qY",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "cyan" },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "cyan", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 3, "x": 9, "y": 17 },
+      "id": 23,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["des_qz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Setpoint qZ",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "decimals": 5,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 17 },
+      "id": 24,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["int_x"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Integrator X",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "decimals": 5,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 17 },
+      "id": 25,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["int_y"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Integrator Y",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "decimals": 5,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 17 },
+      "id": 26,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["int_z"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }],
+      "title": "Integrator Z",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6, "drawStyle": "line", "fillOpacity": 0, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "mean des_qw" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [8, 8], "fill": "dash" } }, { "id": "displayName", "value": "des_qw" }] },
+          { "matcher": { "id": "byName", "options": "mean des_qx" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [8, 8], "fill": "dash" } }, { "id": "displayName", "value": "des_qx" }] },
+          { "matcher": { "id": "byName", "options": "mean des_qy" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [8, 8], "fill": "dash" } }, { "id": "displayName", "value": "des_qy" }] },
+          { "matcher": { "id": "byName", "options": "mean des_qz" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [8, 8], "fill": "dash" } }, { "id": "displayName", "value": "des_qz" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "id": 27,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [
+        { "alias": "qw", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["qw"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "qx", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "B", "resultFormat": "time_series", "select": [[{ "params": ["qx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "qy", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "C", "resultFormat": "time_series", "select": [[{ "params": ["qy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "qz", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "D", "resultFormat": "time_series", "select": [[{ "params": ["qz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "des_qw", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "E", "resultFormat": "time_series", "select": [[{ "params": ["des_qw"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "des_qx", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "F", "resultFormat": "time_series", "select": [[{ "params": ["des_qx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "des_qy", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "G", "resultFormat": "time_series", "select": [[{ "params": ["des_qy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "des_qz", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "H", "resultFormat": "time_series", "select": [[{ "params": ["des_qz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }
+      ],
+      "title": "Quaternion (solid=current  dashed=setpoint)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "barWidthFactor": 0.6, "drawStyle": "line", "fillOpacity": 0, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "id": 28,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [
+        { "alias": "wx", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["wx"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "wy", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "B", "resultFormat": "time_series", "select": [[{ "params": ["wy"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] },
+        { "alias": "wz", "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_telem", "orderByTime": "ASC", "policy": "default", "refId": "C", "resultFormat": "time_series", "select": [[{ "params": ["wz"], "type": "field" }, { "params": [], "type": "mean" }]], "tags": [] }
+      ],
+      "title": "Angular Rates (rad/s)",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OFF", "color": "red", "index": 0 }, "1": { "text": "ON", "color": "green", "index": 1 } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 28 },
+      "id": 29,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["x_en"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "X Axis Enabled",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OFF", "color": "red", "index": 0 }, "1": { "text": "ON", "color": "green", "index": 1 } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 28 },
+      "id": 30,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["y_en"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Y Axis Enabled",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OFF", "color": "red", "index": 0 }, "1": { "text": "ON", "color": "green", "index": 1 } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 28 },
+      "id": 31,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["z_en"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Z Axis Enabled",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 28 },
+      "id": 32,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kp_x"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kp X",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 28 },
+      "id": 33,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["ki_x"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Ki X",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 28 },
+      "id": 34,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kd_x"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kd X",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 31 },
+      "id": 35,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kp_y"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kp Y",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 31 },
+      "id": 36,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["ki_y"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Ki Y",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 31 },
+      "id": 37,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kd_y"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kd Y",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 31 },
+      "id": 38,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kp_z"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kp Z",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 31 },
+      "id": 39,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["ki_z"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Ki Z",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "decimals": 6,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 31 },
+      "id": 40,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "percentChangeColorMode": "standard", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto", "wideLayout": true },
+      "pluginVersion": "11.3.0-pre",
+      "targets": [{ "datasource": { "type": "influxdb", "uid": "bfkbwsvb0ia68d" }, "groupBy": [{ "params": ["$__interval"], "type": "time" }, { "params": ["null"], "type": "fill" }], "measurement": "adcs_params", "orderByTime": "ASC", "policy": "default", "refId": "A", "resultFormat": "time_series", "select": [[{ "params": ["kd_z"], "type": "field" }, { "params": [], "type": "last" }]], "tags": [] }],
+      "title": "Kd Z",
+      "type": "stat"
+    }
+  ],
+  "preload": false,
+  "refresh": "1s",
+  "schemaVersion": 40,
+  "tags": [],
+  "templating": { "list": [] },
+  "time": { "from": "now-5m", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["1s", "5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
+  "timezone": "browser",
+  "title": "OSKISAT-1",
+  "uid": "afkbxf567kmwwd",
+  "version": 3,
+  "weekStart": ""
+}

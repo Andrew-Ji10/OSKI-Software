@@ -19,7 +19,9 @@ static constexpr float kNtc_R0     = 10000.0f;
 static constexpr float kNtc_T0_K   = 298.15f;
 static constexpr float kNtc_Beta   = 3380.0f;
 
-static BQ76905 bms;
+static BQ76905 bms(Wire1);
+static uint8_t consecutiveFailures = 0;
+static const uint8_t MAX_FAILURES = 5;
 
 static float tsCountsToC(int16_t counts) {
     float ratio = (float)counts * (5.0f / 3.0f) / 32768.0f;
@@ -30,11 +32,11 @@ static float tsCountsToC(int16_t counts) {
 }
 
 static void wireInit() {
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_HZ);
+    Wire1.begin(SDA_PIN, SCL_PIN, I2C_HZ);
 }
 
 static void wireRecover() {
-    Wire.end();
+    Wire1.end();
     delay(5);
     wireInit();
 }
@@ -61,22 +63,24 @@ uint32_t task_sendBMSTelem() {
     pkt.id = BMS_TELEMETRY;
     pkt.length = 0;
 
+    bool ok = true;
+
     for (uint8_t i = 1; i <= 4; i++) {
         uint16_t mv = 0xFFFF;
-        bms.readCellVoltage_mV(i, mv);
+        if (!bms.readCellVoltage_mV(i, mv)) ok = false;
         RadioComms::packetAddUint16(&pkt, mv);
     }
 
     uint16_t stack_mv = 0xFFFF;
-    bms.readStackVoltage_mV(stack_mv);
+    if (!bms.readStackVoltage_mV(stack_mv)) ok = false;
     RadioComms::packetAddUint16(&pkt, stack_mv);
 
     int32_t current_ma = 0;
-    bms.readCurrent_mA(current_ma);
+    if (!bms.readCurrent_mA(current_ma)) ok = false;
     RadioComms::packetAddUint32(&pkt, (uint32_t)current_ma);
 
     float int_temp = NAN;
-    bms.readInternalTemp_C(int_temp);
+    if (!bms.readInternalTemp_C(int_temp)) ok = false;
     RadioComms::packetAddFloat(&pkt, int_temp);
 
     int16_t ts_raw = 0;
@@ -87,6 +91,19 @@ uint32_t task_sendBMSTelem() {
     RadioComms::packetAddFloat(&pkt, ts_temp);
 
     RadioComms::emitPacket(&pkt);
+
+    if (!ok) {
+        consecutiveFailures++;
+        Serial.printf("BMS: I2C error (%u/%u)\n", consecutiveFailures, MAX_FAILURES);
+        wireRecover();
+        if (consecutiveFailures >= MAX_FAILURES) {
+            Serial.println("BMS: disabling task after repeated I2C failures");
+            return 0;
+        }
+    } else {
+        consecutiveFailures = 0;
+    }
+
     return 1000 * 1000;
 }
 

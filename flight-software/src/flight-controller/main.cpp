@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "Common.h"
-// #include "BMS.h"
+#include "BMS.h"
 #include "RadioComms.h"
 #include "CAM.h"
 #include "ADCS.h"
@@ -77,7 +77,7 @@ Task taskTable[] = {
   //{task_helloWorld, 0, true},
   {task_autoDeploy, 0, true}, // must be first
   {task_blinkLEDs, 0, true},
-  // {BMS::task_sendBMSTelem, 0, true},
+  {BMS::task_sendBMSTelem, 0, true},
   {ADCS::task_runADCS, 0, true},
   {ADCS::task_sendADCSTelem, 0, true},
   {ADCS::task_sendADCSParams, 0, true},
@@ -132,6 +132,15 @@ void control5V(Packet packet) {
   RadioComms::emitPacket(&response);
 }
 
+void softwareReset(Packet packet) {
+  Packet ack;
+  ack.id = CMD_RESET;
+  ack.length = 0;
+  RadioComms::emitPacket(&ack);
+  delay(100); // give the radio time to finish transmitting
+  ESP.restart();
+}
+
 void setup() {
   // setup stuff here
   pinMode(DEPLOY_CTRL, OUTPUT);
@@ -143,7 +152,7 @@ void setup() {
   Serial.begin(115200);
   initLEDs();
   RadioComms::init();
-  // BMS::init();
+  BMS::init();
   CAM::init();
   ADCS::init();
 
@@ -151,6 +160,7 @@ void setup() {
   RadioComms::registerCallback(CMD_PING, ping);
   RadioComms::registerCallback(CMD_DEPLOY, deployTrigger);
   RadioComms::registerCallback(CMD_CTRL_5V, control5V);
+  RadioComms::registerCallback(CMD_RESET, softwareReset);
 
 
 

@@ -16,16 +16,16 @@
 #define X_CS  32
 
 // ================= WHEEL Y PINS =================
-#define Y_IN1 7
-#define Y_IN2 8
-#define Y_IN3 21
-#define Y_CS  15
+#define Y_IN1 27
+#define Y_IN2 13
+#define Y_IN3 12
+#define Y_CS  33
 
 // ================= WHEEL Z PINS =================
-#define Z_IN1 27
-#define Z_IN2 13
-#define Z_IN3 12
-#define Z_CS  33
+#define Z_IN1 7
+#define Z_IN2 8
+#define Z_IN3 21
+#define Z_CS  15
 
 // ================= PROTOBOARD UART PINS =================
 #define PROTO_RX 37
