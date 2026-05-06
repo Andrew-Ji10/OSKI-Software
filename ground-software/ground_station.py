@@ -376,6 +376,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
     pending_burst_request = None
     active_burst = None
 
+    last_adcs_cur_quat = None  # (qw, qx, qy, qz) from last ADCS_TELEMETRY current attitude
+
     # image reassembly state
     img_chunks       = {}
     img_transfer_id  = None
@@ -419,6 +421,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  adcs zero",
             f"{_TS_PAD}  adcs enable <on|off> <on|off> <on|off>",
             f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
+            f"{_TS_PAD}  adcs set current",
             f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
             f"{_TS_PAD}  ctrl5v <on|off>",
             f"{_TS_PAD}  reset",
@@ -591,6 +594,8 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
                         elif pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
                             ts = datetime.now().strftime("%H:%M:%S")
+                            v = struct.unpack_from("<14f", raw, 0)
+                            last_adcs_cur_quat = (v[4], v[5], v[6], v[7])
                             for line in fmt_adcs_telem(ts, raw, rssi, snr):
                                 log.append([line, 1])
                         elif pkt_id == ADCS_PARAMS and len(raw) >= 39:
@@ -834,20 +839,31 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             send_cmd(CMD_ADCS_ENABLE, bytes(flags),
                                      f"ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", "adcs_enable")
                     elif sub == "set":
-                        try:
-                            if len(parts) != 5:
-                                raise ValueError
-                            roll_deg  = float(parts[2])
-                            pitch_deg = float(parts[3])
-                            yaw_deg   = float(parts[4])
-                        except ValueError:
-                            log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <roll_deg> <pitch_deg> <yaw_deg>`", 4])
+                        if len(parts) == 3 and parts[2].lower() == "current":
+                            if last_adcs_cur_quat is None:
+                                log.append([f"[{ts}] ADCS SET CURRENT — no ADCS telemetry received yet", 4])
+                            else:
+                                qw, qx, qy, qz = last_adcs_cur_quat
+                                r, p, y = quat_to_euler(qw, qx, qy, qz)
+                                send_cmd(CMD_ADCS_SETPOINT, struct.pack("<ffff", qw, qx, qy, qz),
+                                         f"ADCS SET CURRENT CMD sent — "
+                                         f"roll={r:.1f}° pitch={p:.1f}° yaw={y:.1f}° → …",
+                                         "adcs")
                         else:
-                            qw, qx, qy, qz = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
-                            send_cmd(CMD_ADCS_SETPOINT, struct.pack("<ffff", qw, qx, qy, qz),
-                                     f"ADCS SET CMD sent — "
-                                     f"roll={roll_deg:.1f}° pitch={pitch_deg:.1f}° yaw={yaw_deg:.1f}° → …",
-                                     "adcs")
+                            try:
+                                if len(parts) != 5:
+                                    raise ValueError
+                                roll_deg  = float(parts[2])
+                                pitch_deg = float(parts[3])
+                                yaw_deg   = float(parts[4])
+                            except ValueError:
+                                log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <roll_deg> <pitch_deg> <yaw_deg>` or `adcs set current`", 4])
+                            else:
+                                qw, qx, qy, qz = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
+                                send_cmd(CMD_ADCS_SETPOINT, struct.pack("<ffff", qw, qx, qy, qz),
+                                         f"ADCS SET CMD sent — "
+                                         f"roll={roll_deg:.1f}° pitch={pitch_deg:.1f}° yaw={yaw_deg:.1f}° → …",
+                                         "adcs")
                     elif sub == "pid":
                         AXIS_MAP = {"x": 0, "y": 1, "z": 2, "0": 0, "1": 1, "2": 2}
                         try:
@@ -869,7 +885,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                      f"Kp={kp:.6f} Ki={ki:.6f} Kd={kd:.6f} → …",
                                      "adcs_pid")
                     else:
-                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/enable/zero/pid`", 4])
+                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/set current/enable/zero/pid`", 4])
                 elif cmd.lower().startswith("ctrl5v"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):
