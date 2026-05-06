@@ -86,6 +86,26 @@ Task taskTable[] = {
 
 #define TASK_COUNT (sizeof(taskTable) / sizeof (struct Task))
 
+enum TaskIndex : uint32_t {
+  TASK_AUTO_DEPLOY = 0,
+  TASK_BLINK_LEDS,
+  TASK_BMS_TELEM,
+  TASK_ADCS_RUN,
+  TASK_ADCS_TELEM,
+  TASK_ADCS_PARAMS,
+  TASK_CAM_PROCESS
+};
+
+static void scheduleInitialTaskOffsets(uint32_t nowUs) {
+  taskTable[TASK_AUTO_DEPLOY].nexttime = nowUs;
+  taskTable[TASK_BLINK_LEDS].nexttime = nowUs + 250000;
+  taskTable[TASK_BMS_TELEM].nexttime = nowUs + 500000;
+  taskTable[TASK_ADCS_RUN].nexttime = nowUs;
+  taskTable[TASK_ADCS_TELEM].nexttime = nowUs + 100000;
+  taskTable[TASK_ADCS_PARAMS].nexttime = nowUs + 2500000;
+  taskTable[TASK_CAM_PROCESS].nexttime = nowUs;
+}
+
 /*
 Code from other files generally touches main in two places: an init function in setup, where they can register callbacks as to run functions
 when recieving specific packets, and whatever code they need to run regularly that is put in the task table in main. 
@@ -162,7 +182,7 @@ void setup() {
   RadioComms::registerCallback(CMD_CTRL_5V, control5V);
   RadioComms::registerCallback(CMD_RESET, softwareReset);
 
-
+  scheduleInitialTaskOffsets(micros());
 
   while(1) {
     // main loop here to avoid arduino overhead
