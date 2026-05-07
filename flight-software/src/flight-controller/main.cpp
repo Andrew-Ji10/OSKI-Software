@@ -12,10 +12,14 @@
 #define LED2 46
 
 #define DEPLOY_CTRL 18
-static const uint8_t deployTime = 7; // seconds of burnwire current
+static const uint8_t deployTime = 14; // seconds of burnwire current
 static const bool autoDeploy = false; // whether to automatically deploy at T30
 
-#define CTRL_5V 42
+#define CTRL_5V  42
+
+// TPS36BA12ACADDFRQ1: SET[1:0] = 01 disables the watchdog.
+#define WDT_SET0 36
+#define WDT_SET1 37
 
 /**
  * @brief This code implements a task system that allows for the execution of multiple tasks at different intervals.
@@ -162,7 +166,13 @@ void softwareReset(Packet packet) {
 }
 
 void setup() {
-  // setup stuff here
+  // Disable WDT immediately — it powers on in enabled state (SET[1:0]=00)
+  // and will reset the MCU before slow init completes if left running.
+  pinMode(WDT_SET0, OUTPUT);
+  pinMode(WDT_SET1, OUTPUT);
+  digitalWrite(WDT_SET0, HIGH); // SET[1:0] = 01 → disabled
+  digitalWrite(WDT_SET1, LOW);
+
   pinMode(DEPLOY_CTRL, OUTPUT);
   digitalWrite(DEPLOY_CTRL, LOW);
 
