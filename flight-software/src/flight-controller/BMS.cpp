@@ -3,6 +3,7 @@
 #include "Common.h"
 #include "RadioComms.h"
 #include <Wire.h>
+#include <esp_system.h>
 #include <math.h>
 #include <BQ76905.h>
 
@@ -22,6 +23,7 @@ static constexpr float kNtc_Beta   = 3380.0f;
 static BQ76905 bms(Wire1);
 static uint8_t consecutiveFailures = 0;
 static const uint8_t MAX_FAILURES = 5;
+static uint8_t lastResetReason = (uint8_t)ESP_RST_UNKNOWN;
 
 static float tsCountsToC(int16_t counts) {
     float ratio = (float)counts * (5.0f / 3.0f) / 32768.0f;
@@ -42,6 +44,7 @@ static void wireRecover() {
 }
 
 void init() {
+    lastResetReason = (uint8_t)esp_reset_reason();
     wireInit();
     if (!bms.begin()) {
         wireRecover();
@@ -51,12 +54,14 @@ void init() {
     bms.configureCells(CELLS_4S);
 }
 
-// Packet layout (BMS_TELEMETRY, 22 bytes):
+// Packet layout (BMS_TELEMETRY, 27 bytes):
 //   [0-7]  cell1-4 voltage, uint16 mV each
 //   [8-9]  stack voltage, uint16 mV
 //   [10-13] current, int32 mA (cast to uint32)
 //   [14-17] internal temp, float °C
 //   [18-21] TS temp, float °C (NaN if out of range)
+//   [22-25] uptime, uint32 s
+//   [26] last reset reason, uint8 esp_reset_reason_t
 uint32_t task_sendBMSTelem() {
     if (CAM::isTransmitting()) return 1000 * 1000;
     Packet pkt;
@@ -89,6 +94,10 @@ uint32_t task_sendBMSTelem() {
         ts_temp = tsCountsToC(ts_raw);
     }
     RadioComms::packetAddFloat(&pkt, ts_temp);
+
+    uint32_t uptime_s = millis() / 1000UL;
+    RadioComms::packetAddUint32(&pkt, uptime_s);
+    RadioComms::packetAddUint8(&pkt, lastResetReason);
 
     RadioComms::emitPacket(&pkt);
 

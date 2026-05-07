@@ -9,7 +9,7 @@ namespace CAM {
     static const uint32_t CAM_BAUD = 115200;
     static const size_t CAM_RX_BUFFER_BYTES = 8192;
     static const uint8_t CHUNK_SIZE = 246;
-    static const uint32_t MAX_IMAGE_BYTES = 115200;
+    static const uint32_t MAX_IMAGE_BYTES = 128UL * 1024UL;
     static const uint32_t FEEDBACK_TIMEOUT_MS = 3000;
     static const uint8_t MAX_RETRIES = 3;
     static const uint32_t CAMERA_REPLY_TIMEOUT_MS = 1000;
@@ -31,7 +31,10 @@ namespace CAM {
         CAM_RES_VGA  = 1,
         CAM_RES_SVGA = 2,
         CAM_RES_XGA  = 3,
-        CAM_RES_HD   = 4
+        CAM_RES_HD   = 4,
+        CAM_RES_SXGA = 5,
+        CAM_RES_UXGA = 6,
+        CAM_RES_QXGA = 7
     };
 
     enum PendingCameraCommand : uint8_t {
@@ -269,7 +272,7 @@ namespace CAM {
 
         Serial.printf("Received set resolution command: %u\n", resolution);
 
-        if (resolution > CAM_RES_HD) {
+        if (resolution > CAM_RES_QXGA) {
             sendResolutionAck(PHOTO_STATUS_UNSUPPORTED, currentResolution);
             return;
         }
