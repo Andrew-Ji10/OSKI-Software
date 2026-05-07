@@ -40,23 +40,23 @@
 #define WHEEL_INERTIA    1.28e-5   // kg*m^2, 304SS disk 40mm dia 1/4in thick
 
 // ================= SAFETY LIMITS =================
-#define MAX_WHEEL_SPEED  300.0
+#define MAX_WHEEL_SPEED  400.0 // change this when you change the voltage limits
 #define MAX_WHEEL_ACCEL  2000.0
 #define MAX_WHEEL_TORQUE 0.0030
 
 // ================= OBJECTS =================
-BLDCMotor motorX = BLDCMotor(POLE_PAIRS, PHASE_RESISTANCE, KV_RATING, Q_AXIS_IND, D_AXIS_IND);
+//BLDCMotor motorX = BLDCMotor(POLE_PAIRS, PHASE_RESISTANCE, KV_RATING, Q_AXIS_IND, D_AXIS_IND);
 BLDCMotor motorY = BLDCMotor(POLE_PAIRS, PHASE_RESISTANCE, KV_RATING, Q_AXIS_IND, D_AXIS_IND);
-BLDCMotor motorZ = BLDCMotor(POLE_PAIRS, PHASE_RESISTANCE, KV_RATING, Q_AXIS_IND, D_AXIS_IND);
+//BLDCMotor motorZ = BLDCMotor(POLE_PAIRS, PHASE_RESISTANCE, KV_RATING, Q_AXIS_IND, D_AXIS_IND);
 
 // Only driverX owns EN=26. Y and Z omit the pin so they never fight the shared line.
-BLDCDriver3PWM driverX = BLDCDriver3PWM(X_IN1, X_IN2, X_IN3, X_EN);
-BLDCDriver3PWM driverY = BLDCDriver3PWM(Y_IN1, Y_IN2, Y_IN3);
-BLDCDriver3PWM driverZ = BLDCDriver3PWM(Z_IN1, Z_IN2, Z_IN3);
+//BLDCDriver3PWM driverX = BLDCDriver3PWM(X_IN1, X_IN2, X_IN3, X_EN);
+BLDCDriver3PWM driverY = BLDCDriver3PWM(Y_IN1, Y_IN2, Y_IN3, X_EN);
+//BLDCDriver3PWM driverZ = BLDCDriver3PWM(Z_IN1, Z_IN2, Z_IN3);
 
-MagneticSensorSPI sensorX = MagneticSensorSPI(X_CS, 14, 0x3FFF, 1000000);
+//MagneticSensorSPI sensorX = MagneticSensorSPI(X_CS, 14, 0x3FFF, 1000000);
 MagneticSensorSPI sensorY = MagneticSensorSPI(Y_CS, 14, 0x3FFF, 1000000);
-MagneticSensorSPI sensorZ = MagneticSensorSPI(Z_CS, 14, 0x3FFF, 1000000);
+//MagneticSensorSPI sensorZ = MagneticSensorSPI(Z_CS, 14, 0x3FFF, 1000000);
 
 SPIClass SPI_AS5048(VSPI);
 Commander command = Commander(Serial);
@@ -90,9 +90,9 @@ void printWheelStatus(const char* name, BLDCMotor& motor, MagneticSensorSPI& sen
 }
 
 void printAllStatus() {
-  printWheelStatus("X", motorX, sensorX, speedCmdX, torqueCmdX, rampRateCmdX);
+  //printWheelStatus("X", motorX, sensorX, speedCmdX, torqueCmdX, rampRateCmdX);
   printWheelStatus("Y", motorY, sensorY, speedCmdY, torqueCmdY, rampRateCmdY);
-  printWheelStatus("Z", motorZ, sensorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ);
+  //printWheelStatus("Z", motorZ, sensorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ);
 }
 
 void updateWheel(BLDCMotor& motor, float& speedCmd, float torqueCmd, float rampRateCmd,
@@ -120,8 +120,8 @@ void setupWheel(BLDCMotor& motor, BLDCDriver3PWM& driver, MagneticSensorSPI& sen
   digitalWrite(cs, HIGH);
   sensor.init(&SPI_AS5048);
 
-  driver.voltage_power_supply = 15.0;
-  driver.voltage_limit = 3.0;
+  driver.voltage_power_supply = 14.0;
+  driver.voltage_limit = 14.0;
   if (!driver.init()) {
     Serial.print(name); Serial.println(" driver init FAILED");
     while (1);
@@ -131,7 +131,7 @@ void setupWheel(BLDCMotor& motor, BLDCDriver3PWM& driver, MagneticSensorSPI& sen
   motor.linkSensor(&sensor);
   motor.torque_controller = TorqueControlType::voltage;
   motor.controller        = MotionControlType::velocity;
-  motor.voltage_limit        = 3.0;
+  motor.voltage_limit        = 14.0;
   motor.voltage_sensor_align = 3.0;  // reduces inrush during FOC alignment
   motor.velocity_limit       = MAX_WHEEL_SPEED;
   motor.PID_velocity.P  = 0.08;
@@ -194,27 +194,27 @@ void dispatchMotor(BLDCMotor& motor, MagneticSensorSPI& sensor,
   }
 }
 
-void doX(char* cmd) { dispatchMotor(motorX, sensorX, speedCmdX, torqueCmdX, rampRateCmdX, lastUpdateX, "X", cmd); }
+//void doX(char* cmd) { dispatchMotor(motorX, sensorX, speedCmdX, torqueCmdX, rampRateCmdX, lastUpdateX, "X", cmd); }
 void doY(char* cmd) { dispatchMotor(motorY, sensorY, speedCmdY, torqueCmdY, rampRateCmdY, lastUpdateY, "Y", cmd); }
-void doZ(char* cmd) { dispatchMotor(motorZ, sensorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ, lastUpdateZ, "Z", cmd); }
+//void doZ(char* cmd) { dispatchMotor(motorZ, sensorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ, lastUpdateZ, "Z", cmd); }
 
 // ================= GLOBAL COMMANDS =================
 void doEnableAll(char* cmd) {
   // Snapshot current speeds for bumpless re-enable
-  sensorX.update(); speedCmdX = sensorX.getVelocity(); torqueCmdX = 0.0; rampRateCmdX = 0.0; motorX.target = speedCmdX;
+  //sensorX.update(); speedCmdX = sensorX.getVelocity(); torqueCmdX = 0.0; rampRateCmdX = 0.0; motorX.target = speedCmdX;
   sensorY.update(); speedCmdY = sensorY.getVelocity(); torqueCmdY = 0.0; rampRateCmdY = 0.0; motorY.target = speedCmdY;
-  sensorZ.update(); speedCmdZ = sensorZ.getVelocity(); torqueCmdZ = 0.0; rampRateCmdZ = 0.0; motorZ.target = speedCmdZ;
+  //sensorZ.update(); speedCmdZ = sensorZ.getVelocity(); torqueCmdZ = 0.0; rampRateCmdZ = 0.0; motorZ.target = speedCmdZ;
   lastUpdateX = lastUpdateY = lastUpdateZ = micros();
-  motorX.enable();  // drives EN=26 HIGH, physically enables all three drivers
+  //motorX.enable();  // drives EN=26 HIGH, physically enables all three drivers
   motorY.enable();  // sets enabled flag only (no EN pin on driverY)
-  motorZ.enable();  // sets enabled flag only (no EN pin on driverZ)
+  //motorZ.enable();  // sets enabled flag only (no EN pin on driverZ)
   Serial.println("All enabled.");
 }
 
 void doDisableAll(char* cmd) {
-  motorX.disable();  // drives EN=26 LOW, physically disables all three drivers
+  //motorX.disable();  // drives EN=26 LOW, physically disables all three drivers
   motorY.disable();
-  motorZ.disable();
+  //motorZ.disable();
   Serial.println("All disabled.");
 }
 
@@ -275,17 +275,17 @@ void setup() {
 
   // Init order places X in MCPWM group 0, Z in group 1, Y shares group 0 with X.
   // This avoids the X+Z group-sharing issue while keeping X+Y (known good) together.
-  setupWheel(motorX, driverX, sensorX, X_CS, "X");
+  //setupWheel(motorX, driverX, sensorX, X_CS, "X");
   setupWheel(motorY, driverY, sensorY, Y_CS, "Y");
-  setupWheel(motorZ, driverZ, sensorZ, Z_CS, "Z");
+  //setupWheel(motorZ, driverZ, sensorZ, Z_CS, "Z");
 
   lastUpdateX = micros();
   lastUpdateY = micros();
   lastUpdateZ = micros();
 
-  command.add('X', doX, "X motor");
+  //command.add('X', doX, "X motor");
   command.add('Y', doY, "Y motor");
-  command.add('Z', doZ, "Z motor");
+  //command.add('Z', doZ, "Z motor");
   command.add('E', doEnableAll,    "Enable all");
   command.add('D', doDisableAll,   "Disable all");
   command.add('S', doAllStatus,    "All status");
@@ -297,17 +297,17 @@ void setup() {
 
 // ================= LOOP =================
 void loop() {
-  updateWheel(motorX, speedCmdX, torqueCmdX, rampRateCmdX, lastUpdateX);
+  //updateWheel(motorX, speedCmdX, torqueCmdX, rampRateCmdX, lastUpdateX);
   updateWheel(motorY, speedCmdY, torqueCmdY, rampRateCmdY, lastUpdateY);
-  updateWheel(motorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ, lastUpdateZ);
+  //updateWheel(motorZ, speedCmdZ, torqueCmdZ, rampRateCmdZ, lastUpdateZ);
 
-  motorX.loopFOC();
+  //motorX.loopFOC();
   motorY.loopFOC();
-  motorZ.loopFOC();
+  //motorZ.loopFOC();
 
-  motorX.move();
+  //motorX.move();
   motorY.move();
-  motorZ.move();
+  //motorZ.move();
 
   command.run();
   runProtoCommands();
