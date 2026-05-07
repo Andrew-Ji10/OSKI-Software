@@ -59,6 +59,7 @@ CMD_ADCS_ENABLE     = 6
 CMD_ADCS_ZERO       = 7
 CMD_ADCS_SET_PID    = 8
 CMD_RESET           = 9
+CMD_ADCS_WHEEL_VEL  = 10
 BMS_TELEMETRY  = 101
 ADCS_TELEMETRY = 102
 ADCS_PARAMS    = 103
@@ -78,6 +79,7 @@ MEAS_NAME = {
     CMD_ADCS_ENABLE:    "adcs_enable",
     CMD_ADCS_ZERO:      "adcs_zero",
     CMD_ADCS_SET_PID:   "adcs_set_pid",
+    CMD_ADCS_WHEEL_VEL: "adcs_wheel_vel",
     ADCS_TELEMETRY:     "adcs_telem",
     ADCS_PARAMS:        "adcs_params",
     CMD_SET_CAMERA_RES: "set_camera_res",
@@ -423,6 +425,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
             f"{_TS_PAD}  adcs set current",
             f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
+            f"{_TS_PAD}  adcs vel <x|y|z> <vel_rad_s>",
             f"{_TS_PAD}  ctrl5v <on|off>",
             f"{_TS_PAD}  reset",
         ]
@@ -457,6 +460,15 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
 
     def on_reset(raw, rssi, snr):
         resolve("reset", "RESET ACK — FC restarting", rssi, snr)
+
+    def on_adcs_wheel_vel(raw, rssi, snr):
+        if len(raw) >= 5:
+            axis_n, vel = struct.unpack_from("<Bf", raw, 0)
+            axis_s = ("X", "Y", "Z")[axis_n] if axis_n < 3 else str(axis_n)
+            msg = f"ADCS WHEEL VEL ACK — {axis_s}={vel:.3f} rad/s (ADCS {axis_s} disabled)"
+        else:
+            msg = "ADCS WHEEL VEL ACK"
+        resolve("adcs_wheel_vel", msg, rssi, snr)
 
     def on_adcs_pid(raw, rssi, snr):
         if len(raw) >= 13:
@@ -519,6 +531,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         CMD_ADCS_ZERO:     on_adcs_zero,
         CMD_ADCS_ENABLE:   on_adcs_enable,
         CMD_ADCS_SET_PID:  on_adcs_pid,
+        CMD_ADCS_WHEEL_VEL: on_adcs_wheel_vel,
         CMD_RESET:         on_reset,
     }
 
@@ -884,8 +897,25 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                      f"ADCS PID CMD sent — {axis_label} "
                                      f"Kp={kp:.6f} Ki={ki:.6f} Kd={kd:.6f} → …",
                                      "adcs_pid")
+                    elif sub == "vel":
+                        AXIS_MAP = {"x": 0, "y": 1, "z": 2, "0": 0, "1": 1, "2": 2}
+                        try:
+                            if len(parts) != 4:
+                                raise ValueError
+                            axis_s = parts[2].lower()
+                            if axis_s not in AXIS_MAP:
+                                raise ValueError
+                            axis_n = AXIS_MAP[axis_s]
+                            vel = float(parts[3])
+                        except ValueError:
+                            log.append([f"[{ts}] ADCS VEL CMD invalid — use `adcs vel <x|y|z> <vel_rad_s>`", 4])
+                        else:
+                            axis_label = ("X", "Y", "Z")[axis_n]
+                            send_cmd(CMD_ADCS_WHEEL_VEL, struct.pack("<Bf", axis_n, vel),
+                                     f"ADCS WHEEL VEL CMD sent — {axis_label}={vel:.3f} rad/s → …",
+                                     "adcs_wheel_vel")
                     else:
-                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/set current/enable/zero/pid`", 4])
+                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/set current/enable/zero/pid/vel`", 4])
                 elif cmd.lower().startswith("ctrl5v"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):

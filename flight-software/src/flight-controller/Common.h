@@ -13,6 +13,7 @@
 #define CMD_SET_CAMERA_RES 4
 #define CMD_CTRL_5V 5
 #define CMD_RESET   9
+#define CMD_ADCS_WHEEL_VEL 10  // axis (uint8, 0=X 1=Y 2=Z) | velocity (float, rad/s)
 
 
 #define HSK_TELEMETRY  100

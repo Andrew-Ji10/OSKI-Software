@@ -12,7 +12,7 @@
 #define LED2 46
 
 #define DEPLOY_CTRL 18
-static const uint8_t deployTime = 7; // seconds of burnwire current 
+static const uint8_t deployTime = 13; // seconds of burnwire current 
 static const bool autoDeploy = false; // whether to automatically deploy at T30
 
 #define CTRL_5V 42

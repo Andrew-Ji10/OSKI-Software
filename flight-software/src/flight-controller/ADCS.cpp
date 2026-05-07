@@ -1,5 +1,6 @@
 #include "ADCS.h"
 #include "CAM.h"
+#include <EEPROM.h>
 
 #define UART_TX 1
 #define UART_RX 2
@@ -209,6 +210,38 @@ void setPIDGains(Packet packet) {
   RadioComms::emitPacket(&response);
 }
 
+// CMD_ADCS_WHEEL_VEL payload: axis (uint8, 0=X 1=Y 2=Z) | velocity (float)
+void setWheelVelocity(Packet packet) {
+  uint8_t axis = RadioComms::packetGetUint8(&packet, 0);
+  float vel    = RadioComms::packetGetFloat(&packet, 1);
+
+  switch (axis) {
+    case 0:
+      x_enabled = false;
+      WHEEL_SERIAL.print("XV");
+      WHEEL_SERIAL.println(vel, 3);
+      break;
+    case 1:
+      y_enabled = false;
+      WHEEL_SERIAL.print("YV");
+      WHEEL_SERIAL.println(vel, 3);
+      break;
+    case 2:
+      z_enabled = false;
+      WHEEL_SERIAL.print("ZV");
+      WHEEL_SERIAL.println(vel, 3);
+      break;
+    default: return;
+  }
+
+  Packet response;
+  response.id = CMD_ADCS_WHEEL_VEL;
+  response.length = 0;
+  RadioComms::packetAddUint8(&response, axis);
+  RadioComms::packetAddFloat(&response, vel);
+  RadioComms::emitPacket(&response);
+}
+
 void zeroWheelsCmd(Packet packet) {
   x_enabled = false;
   y_enabled = false;
@@ -221,6 +254,38 @@ void zeroWheelsCmd(Packet packet) {
   response.id = CMD_ADCS_ZERO;
   response.length = 0;
   RadioComms::emitPacket(&response);
+}
+
+// ==========================
+// EEPROM CALIBRATION PERSISTENCE
+// ==========================
+
+static constexpr uint16_t EEPROM_MAGIC    = 0xCA1C;
+static constexpr int      EEPROM_MAGIC_ADDR = 0;
+static constexpr int      EEPROM_CAL_ADDR   = 2;
+static constexpr int      EEPROM_SIZE = EEPROM_CAL_ADDR + sizeof(adafruit_bno055_offsets_t);
+
+static void saveCalibrationToEEPROM() {
+  adafruit_bno055_offsets_t offsets;
+  bno.getSensorOffsets(offsets);
+  EEPROM.put(EEPROM_CAL_ADDR, offsets);
+  EEPROM.put(EEPROM_MAGIC_ADDR, EEPROM_MAGIC);
+  EEPROM.commit();
+  Serial.println("BNO055 calibration saved to EEPROM.");
+}
+
+static bool loadCalibrationFromEEPROM() {
+  uint16_t magic;
+  EEPROM.get(EEPROM_MAGIC_ADDR, magic);
+  if (magic != EEPROM_MAGIC) {
+    Serial.println("No valid BNO055 calibration in EEPROM.");
+    return false;
+  }
+  adafruit_bno055_offsets_t offsets;
+  EEPROM.get(EEPROM_CAL_ADDR, offsets);
+  bno.setSensorOffsets(offsets);
+  Serial.println("BNO055 calibration restored from EEPROM.");
+  return true;
 }
 
 // ==========================
@@ -244,9 +309,9 @@ static void printCalibrationStatus() {
 static void waitForBNOCalibration() {
   Serial.println("BNO055 calibration starting...");
   Serial.println("Keep still first for gyro, then slowly rotate/figure-8 for mag.");
-  Serial.println("Target: gyro>=3, accel>=2, mag>=2. Full ideal is 3/3/3/3.");
+  Serial.println("Target: sys=3, gyro=3, accel=3, mag=3.");
 
-  const uint32_t timeout_ms = 30000;
+  const uint32_t timeout_ms = 300000;
   uint32_t start_ms = millis();
 
   while (millis() - start_ms < timeout_ms) {
@@ -262,7 +327,7 @@ static void waitForBNOCalibration() {
     Serial.print("/");
     Serial.println(mag);
 
-    if (gyro >= 3 && accel >= 1 && mag >= 2) {
+    if (sys >= 3 && gyro >= 3 && accel >= 3 && mag >= 3) {
       Serial.println("BNO055 calibration acceptable.");
       return;
     }
@@ -335,7 +400,13 @@ void init() {
   bno.setExtCrystalUse(true);
   delay(500);
 
-  waitForBNOCalibration();
+  EEPROM.begin(EEPROM_SIZE);
+  if (!loadCalibrationFromEEPROM()) {
+    waitForBNOCalibration();
+    saveCalibrationToEEPROM();
+  } else {
+    printCalibrationStatus();
+  }
 
   delay(300);
   setCurrentAttitudeAsTarget();
@@ -344,6 +415,7 @@ void init() {
   RadioComms::registerCallback(CMD_ADCS_ENABLE, enableADCS);
   RadioComms::registerCallback(CMD_ADCS_ZERO, zeroWheelsCmd);
   RadioComms::registerCallback(CMD_ADCS_SET_PID, setPIDGains);
+  RadioComms::registerCallback(CMD_ADCS_WHEEL_VEL, setWheelVelocity);
 
   Serial.println("ADCS initialized");
 }
