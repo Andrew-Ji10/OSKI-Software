@@ -58,6 +58,11 @@ static float int_z = 0.0f;
 static float last_qw = 1.0f, last_qx = 0.0f, last_qy = 0.0f, last_qz = 0.0f;
 static float last_wx = 0.0f, last_wy = 0.0f, last_wz = 0.0f;
 
+// Last Z-axis PID error terms (p=attitude error, d=rate, i=integrator)
+static float last_p_err_z = 0.0f;
+static float last_d_err_z = 0.0f;
+static float last_i_err_z = 0.0f;
+
 static constexpr uint32_t ADCS_PERIOD_US = 20000;
 
 // ==========================
@@ -591,6 +596,9 @@ uint32_t task_runADCS() {
 
   last_qw = qw; last_qx = qx; last_qy = qy; last_qz = qz;
   last_wx = wx; last_wy = wy; last_wz = wz;
+  last_p_err_z = qerr_z;
+  last_d_err_z = wz;
+  last_i_err_z = int_z;
 
   return ADCS_PERIOD_US;
 }
@@ -599,8 +607,8 @@ uint32_t task_runADCS() {
 // TELEMETRY TASKS
 // ==========================
 
-// ADCS_TELEMETRY (56 bytes):
-//   setpoint quat (4×f) | current quat (4×f) | gyro (3×f) | integrators (3×f)
+// ADCS_TELEMETRY (68 bytes):
+//   setpoint quat (4xf) | current quat (4xf) | gyro (3xf) | integrators (3xf) | Z PID errors p,d,i (3xf)
 uint32_t task_sendADCSTelem() {
   if (CAM::isTransmitting()) return 1000000;
   Packet p;
@@ -617,11 +625,14 @@ uint32_t task_sendADCSTelem() {
   RadioComms::packetAddFloat(&p, last_wx);
   RadioComms::packetAddFloat(&p, last_wy);
   RadioComms::packetAddFloat(&p, last_wz);
-  RadioComms::packetAddFloat(&p, int_x);
-  RadioComms::packetAddFloat(&p, int_y);
-  RadioComms::packetAddFloat(&p, int_z);
+  // RadioComms::packetAddFloat(&p, int_x);
+  // RadioComms::packetAddFloat(&p, int_y);
+  // RadioComms::packetAddFloat(&p, int_z);
+  RadioComms::packetAddFloat(&p, last_p_err_z);
+  //RadioComms::packetAddFloat(&p, last_d_err_z);
+  RadioComms::packetAddFloat(&p, last_i_err_z);
   RadioComms::emitPacket(&p);
-  return 1000000; // 1 Hz
+  return 50000; // 20 Hz
 }
 
 // ADCS_PARAMS (39 bytes):
