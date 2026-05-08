@@ -132,7 +132,10 @@ void setupWheel(BLDCMotor& motor, BLDCDriver3PWM& driver, MagneticSensorSPI& sen
   motor.torque_controller = TorqueControlType::voltage;
   motor.controller        = MotionControlType::velocity;
   motor.voltage_limit        = 14.0;
-  motor.voltage_sensor_align = 3.0;  // reduces inrush during FOC alignment
+  motor.voltage_sensor_align = 7.0;  // reduces inrush during FOC alignment
+  //motor.zero_electric_angle = 2.70;
+  motor.zero_electric_angle = 2.29;
+  motor.sensor_direction = Direction::CW;
   motor.velocity_limit       = MAX_WHEEL_SPEED;
   motor.PID_velocity.P  = 0.08;
   motor.PID_velocity.I  = 0.5;
@@ -242,6 +245,8 @@ void doHelp(char* cmd) {
   Serial.println(F("========================="));
 }
 
+// Secondary serial: only V (velocity), R (ramp), E (enable), D (disable).
+// Sends ACK:<cmd> on success, NACK on rejected/unknown command.
 void runProtoCommands() {
   while (Serial2.available()) {
     char c = (char)Serial2.read();
@@ -249,8 +254,38 @@ void runProtoCommands() {
     if (c == '\n') {
       if (protoBufIdx > 0) {
         protoBuf[protoBufIdx] = '\0';
-        command.run(protoBuf);
         protoBufIdx = 0;
+
+        char first = toupper((unsigned char)protoBuf[0]);
+
+        if (first == 'P') {
+          Serial2.println(protoBuf);
+        } else if (first == 'E') {
+          doEnableAll(nullptr);
+          Serial2.println(protoBuf);
+        } else if (first == 'D') {
+          doDisableAll(nullptr);
+          Serial2.println(protoBuf);
+        } else if (first == 'Y' && protoBuf[1] != '\0') {
+          char sub = toupper((unsigned char)protoBuf[1]);
+          char* arg = protoBuf + 2;
+          if (sub == 'V') {
+            torqueCmdY   = 0.0;
+            rampRateCmdY = 0.0;
+            speedCmdY    = clampFloat(atof(arg), -MAX_WHEEL_SPEED, MAX_WHEEL_SPEED);
+            motorY.target = speedCmdY;
+            lastUpdateY  = micros();
+            Serial.print("Y speed: "); Serial.print(speedCmdY, 3); Serial.println(" rad/s");
+            Serial2.println(protoBuf);
+          } else if (sub == 'R') {
+            torqueCmdY   = 0.0;
+            rampRateCmdY = clampFloat(atof(arg), -MAX_WHEEL_ACCEL, MAX_WHEEL_ACCEL);
+            lastUpdateY  = micros();
+            Serial.print("Y ramp: "); Serial.print(rampRateCmdY, 3); Serial.println(" rad/s^2");
+          }
+          // unrecognized sub-command: no response
+        }
+        // unrecognized command: no response
       }
     } else if (protoBufIdx < sizeof(protoBuf) - 1) {
       protoBuf[protoBufIdx++] = c;
@@ -318,3 +353,5 @@ void loop() {
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
 }
+
+// 2.36 HIGHER DRAW +

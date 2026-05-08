@@ -60,6 +60,9 @@ CMD_ADCS_ZERO       = 7
 CMD_ADCS_SET_PID    = 8
 CMD_RESET           = 9
 CMD_ADCS_WHEEL_VEL  = 10
+CMD_ADCS_POWER_ON   = 11
+CMD_ADCS_POWER_OFF  = 12
+CMD_ADCS_PING       = 13
 BMS_TELEMETRY  = 101
 ADCS_TELEMETRY = 102
 ADCS_PARAMS    = 103
@@ -80,6 +83,9 @@ MEAS_NAME = {
     CMD_ADCS_ZERO:      "adcs_zero",
     CMD_ADCS_SET_PID:   "adcs_set_pid",
     CMD_ADCS_WHEEL_VEL: "adcs_wheel_vel",
+    CMD_ADCS_POWER_ON:  "adcs_power_on",
+    CMD_ADCS_POWER_OFF: "adcs_power_off",
+    CMD_ADCS_PING:      "adcs_ping",
     ADCS_TELEMETRY:     "adcs_telem",
     ADCS_PARAMS:        "adcs_params",
     CMD_SET_CAMERA_RES: "set_camera_res",
@@ -426,6 +432,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  adcs set current",
             f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
             f"{_TS_PAD}  adcs vel <x|y|z> <vel_rad_s>",
+            f"{_TS_PAD}  adcs poweron",
+            f"{_TS_PAD}  adcs poweroff",
+            f"{_TS_PAD}  adcs ping",
             f"{_TS_PAD}  ctrl5v <on|off>",
             f"{_TS_PAD}  reset",
         ]
@@ -469,6 +478,17 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         else:
             msg = "ADCS WHEEL VEL ACK"
         resolve("adcs_wheel_vel", msg, rssi, snr)
+
+    def on_adcs_power_on(raw, rssi, snr):
+        resolve("adcs_power_on", "ADCS POWER ON ACK", rssi, snr)
+
+    def on_adcs_power_off(raw, rssi, snr):
+        resolve("adcs_power_off", "ADCS POWER OFF ACK", rssi, snr)
+
+    def on_adcs_ping(raw, rssi, snr):
+        alive = len(raw) >= 1 and raw[0] == 1
+        msg = f"ADCS PING — {'YES (alive)' if alive else 'NO (no response)'}  RSSI={rssi} SNR={snr}"
+        resolve("adcs_ping", msg, rssi, snr, color=1 if alive else 4)
 
     def on_adcs_pid(raw, rssi, snr):
         if len(raw) >= 13:
@@ -532,6 +552,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
         CMD_ADCS_ENABLE:   on_adcs_enable,
         CMD_ADCS_SET_PID:  on_adcs_pid,
         CMD_ADCS_WHEEL_VEL: on_adcs_wheel_vel,
+        CMD_ADCS_POWER_ON:  on_adcs_power_on,
+        CMD_ADCS_POWER_OFF: on_adcs_power_off,
+        CMD_ADCS_PING:      on_adcs_ping,
         CMD_RESET:         on_reset,
     }
 
@@ -914,8 +937,14 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                             send_cmd(CMD_ADCS_WHEEL_VEL, struct.pack("<Bf", axis_n, vel),
                                      f"ADCS WHEEL VEL CMD sent — {axis_label}={vel:.3f} rad/s → …",
                                      "adcs_wheel_vel")
+                    elif sub == "poweron":
+                        send_cmd(CMD_ADCS_POWER_ON, b"", "ADCS POWER ON CMD sent → …", "adcs_power_on")
+                    elif sub == "poweroff":
+                        send_cmd(CMD_ADCS_POWER_OFF, b"", "ADCS POWER OFF CMD sent → …", "adcs_power_off")
+                    elif sub == "ping":
+                        send_cmd(CMD_ADCS_PING, b"", "ADCS PING CMD sent → …", "adcs_ping")
                     else:
-                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/set current/enable/zero/pid/vel`", 4])
+                        log.append([f"[{ts}] ADCS CMD invalid — use `adcs set/set current/enable/zero/pid/vel/poweron/poweroff/ping`", 4])
                 elif cmd.lower().startswith("ctrl5v"):
                     parts = cmd.lower().split()
                     if len(parts) != 2 or parts[1] not in ("on", "off", "1", "0"):

@@ -70,9 +70,9 @@ static float q_des_y = 0.0f;
 static float q_des_z = 0.0f;
 
 // Y disabled by default for now
-static bool x_enabled = true;
+static bool x_enabled = false;
 static bool y_enabled = false;
-static bool z_enabled = true;
+static bool z_enabled = false;
 
 // ==========================
 // HELPERS
@@ -157,6 +157,31 @@ void enableADCS(Packet packet) {
 // WHEEL COMMANDS
 // ==========================
 
+// Block until a newline-terminated line arrives from WHEEL_SERIAL or timeoutMs elapses.
+static bool readWheelAck(char* buf, size_t maxLen, uint32_t timeoutMs = 150) {
+  uint32_t start = millis();
+  size_t idx = 0;
+  while (millis() - start < timeoutMs) {
+    if (WHEEL_SERIAL.available()) {
+      char c = (char)WHEEL_SERIAL.read();
+      if (c == '\n') { buf[idx] = '\0'; return idx > 0; }
+      if (c != '\r' && idx < maxLen - 1) buf[idx++] = c;
+    }
+  }
+  buf[idx] = '\0';
+  return false;
+}
+
+static void flushWheelRx() {
+  while (WHEEL_SERIAL.available()) WHEEL_SERIAL.read();
+}
+
+static void packetAddStr(Packet* p, const char* s) {
+  uint8_t len = (uint8_t)strnlen(s, sizeof(p->data) - p->length);
+  memcpy(p->data + p->length, s, len);
+  p->length += len;
+}
+
 static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
   if (x_enabled) {
     WHEEL_SERIAL.print("XR");
@@ -164,13 +189,13 @@ static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
   }
 
   if (y_enabled) {
-    WHEEL_SERIAL.print("YR");
+    WHEEL_SERIAL.print("ZR");
     WHEEL_SERIAL.println(ramp_y, 3);
   }
 
   if (z_enabled) {
-    WHEEL_SERIAL.print("ZR");
-    WHEEL_SERIAL.println(ramp_z, 3);
+    WHEEL_SERIAL.print("YR");
+    WHEEL_SERIAL.println(-ramp_z, 3);
   }
 }
 
@@ -223,22 +248,26 @@ void setWheelVelocity(Packet packet) {
       break;
     case 1:
       y_enabled = false;
-      WHEEL_SERIAL.print("YV");
+      WHEEL_SERIAL.print("ZV");
       WHEEL_SERIAL.println(vel, 3);
       break;
     case 2:
       z_enabled = false;
-      WHEEL_SERIAL.print("ZV");
+      WHEEL_SERIAL.print("YV");
       WHEEL_SERIAL.println(vel, 3);
       break;
     default: return;
   }
+
+  char ack[32];
+  readWheelAck(ack, sizeof(ack));
 
   Packet response;
   response.id = CMD_ADCS_WHEEL_VEL;
   response.length = 0;
   RadioComms::packetAddUint8(&response, axis);
   RadioComms::packetAddFloat(&response, vel);
+  packetAddStr(&response, ack);
   RadioComms::emitPacket(&response);
 }
 
@@ -250,9 +279,58 @@ void zeroWheelsCmd(Packet packet) {
   int_x = 0.0f; int_y = 0.0f; int_z = 0.0f;
   zeroWheels();
 
+  // zeroWheels() sends YR and YV which get echoed; collect both
+  char ack1[32] = "", ack2[32] = "";
+  readWheelAck(ack1, sizeof(ack1), 200);
+  readWheelAck(ack2, sizeof(ack2), 200);
+
   Packet response;
   response.id = CMD_ADCS_ZERO;
   response.length = 0;
+  packetAddStr(&response, ack1);
+  if (ack2[0] != '\0') {
+    RadioComms::packetAddUint8(&response, ' ');
+    packetAddStr(&response, ack2);
+  }
+  RadioComms::emitPacket(&response);
+}
+
+void pingADCS(Packet packet) {
+  WHEEL_SERIAL.println("P");
+
+  char ack[32];
+  bool alive = readWheelAck(ack, sizeof(ack));
+
+  Packet response;
+  response.id = CMD_ADCS_PING;
+  response.length = 0;
+  RadioComms::packetAddUint8(&response, alive ? 1 : 0);
+  RadioComms::emitPacket(&response);
+}
+
+void powerOnADCS(Packet packet) {
+  WHEEL_SERIAL.println("E");
+
+  char ack[32];
+  readWheelAck(ack, sizeof(ack));
+
+  Packet response;
+  response.id = CMD_ADCS_POWER_ON;
+  response.length = 0;
+  packetAddStr(&response, ack);
+  RadioComms::emitPacket(&response);
+}
+
+void powerOffADCS(Packet packet) {
+  WHEEL_SERIAL.println("D");
+
+  char ack[32];
+  readWheelAck(ack, sizeof(ack));
+
+  Packet response;
+  response.id = CMD_ADCS_POWER_OFF;
+  response.length = 0;
+  packetAddStr(&response, ack);
   RadioComms::emitPacket(&response);
 }
 
@@ -416,6 +494,9 @@ void init() {
   RadioComms::registerCallback(CMD_ADCS_ZERO, zeroWheelsCmd);
   RadioComms::registerCallback(CMD_ADCS_SET_PID, setPIDGains);
   RadioComms::registerCallback(CMD_ADCS_WHEEL_VEL, setWheelVelocity);
+  RadioComms::registerCallback(CMD_ADCS_POWER_ON, powerOnADCS);
+  RadioComms::registerCallback(CMD_ADCS_POWER_OFF, powerOffADCS);
+  RadioComms::registerCallback(CMD_ADCS_PING, pingADCS);
 
   Serial.println("ADCS initialized");
 }
