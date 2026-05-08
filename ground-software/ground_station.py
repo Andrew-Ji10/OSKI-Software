@@ -433,6 +433,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  adcs zero",
             f"{_TS_PAD}  adcs enable <on|off>  (Z axis)",
             f"{_TS_PAD}  adcs enable <on|off> <on|off> <on|off>",
+            f"{_TS_PAD}  adcs set <yaw_deg>  (roll=0 pitch=0)",
             f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
             f"{_TS_PAD}  adcs set current",
             f"{_TS_PAD}  adcs pid <kp> <ki> <kd>  (Z axis)",
@@ -899,13 +900,16 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                          "adcs")
                         else:
                             try:
-                                if len(parts) != 5:
+                                if len(parts) == 3:
+                                    roll_deg, pitch_deg, yaw_deg = 0.0, 0.0, float(parts[2])
+                                elif len(parts) == 5:
+                                    roll_deg  = float(parts[2])
+                                    pitch_deg = float(parts[3])
+                                    yaw_deg   = float(parts[4])
+                                else:
                                     raise ValueError
-                                roll_deg  = float(parts[2])
-                                pitch_deg = float(parts[3])
-                                yaw_deg   = float(parts[4])
                             except ValueError:
-                                log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <roll_deg> <pitch_deg> <yaw_deg>` or `adcs set current`", 4])
+                                log.append([f"[{ts}] ADCS SET CMD invalid — use `adcs set <yaw_deg>` or `adcs set <roll_deg> <pitch_deg> <yaw_deg>` or `adcs set current`", 4])
                             else:
                                 qw, qx, qy, qz = euler_to_quat(roll_deg, pitch_deg, yaw_deg)
                                 send_cmd(CMD_ADCS_SETPOINT, struct.pack("<ffff", qw, qx, qy, qz),
