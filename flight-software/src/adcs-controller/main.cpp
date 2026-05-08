@@ -281,8 +281,6 @@ void runProtoCommands() {
             torqueCmdY   = 0.0;
             rampRateCmdY = clampFloat(atof(arg), -MAX_WHEEL_ACCEL, MAX_WHEEL_ACCEL);
             lastUpdateY  = micros();
-            Serial2.print("V");
-            Serial2.println(speedCmdY);
             Serial.print("Y ramp: "); Serial.print(rampRateCmdY, 3); Serial.println(" rad/s^2");
           }
           // unrecognized sub-command: no response

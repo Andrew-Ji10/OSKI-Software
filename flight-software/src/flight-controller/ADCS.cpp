@@ -33,11 +33,11 @@ static constexpr float RAMP_MAX = 3000.0f;
 
 static float KP_X = 0.0f;
 static float KP_Y = 0.0f;
-static float KP_Z = 6.7e-3f;
+static float KP_Z = 6.0e-3f;
 
 static float KD_X = 0.0f;
 static float KD_Y = 0.0f;
-static float KD_Z = 4.0e-5f;
+static float KD_Z = 0.0f;
 
 static float KI_X = 0.0f;
 static float KI_Y = 0.0f;
@@ -49,17 +49,10 @@ static constexpr float QERR_DEADBAND = 0.03f;
 // Integrator windup clamp [rad·s] (quaternion error vector units)
 static constexpr float I_MAX = 0.1f;
 
-// Desaturation thresholds
-static constexpr float WHEEL_SAT_THRESH = 390.0f;  // rad/s — near ±400 limit
-static constexpr float ERR_DESAT_QERR_W = 0.924f;  // cos(22.5°) ↔ 45° error
-
 // Per-axis integrator accumulators
 static float int_x = 0.0f;
 static float int_y = 0.0f;
 static float int_z = 0.0f;
-
-// Current wheel velocities reported back from adcs-controller (rad/s)
-static float wheel_vel_y = 0.0f;
 
 // Last measured attitude + gyro (updated each ADCS tick, read by telem task)
 static float last_qw = 1.0f, last_qx = 0.0f, last_qy = 0.0f, last_qz = 0.0f;
@@ -203,10 +196,6 @@ static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
   if (z_enabled) {
     WHEEL_SERIAL.print("YR");
     WHEEL_SERIAL.println(ramp_z, 3);
-    char resp[32];
-    if (readWheelAck(resp, sizeof(resp), 10) && resp[0] == 'V') {
-      wheel_vel_y = atof(resp + 1);
-    }
   }
 }
 
@@ -569,19 +558,6 @@ uint32_t task_runADCS() {
     return ADCS_PERIOD_US;
   }
 
-  // Desaturate: if the wheel is saturated and error is > ~45°, zero the wheel
-  // and stop driving for 1 s to let it spin down
-  static uint32_t desat_until_ms = 0;
-  if (fabsf(wheel_vel_y) >= WHEEL_SAT_THRESH && qerr_w < ERR_DESAT_QERR_W) {
-    WHEEL_SERIAL.println("YV0");
-    wheel_vel_y = 0.0f;
-    int_x = 0.0f; int_y = 0.0f; int_z = 0.0f;
-    desat_until_ms = millis() + 1000;
-    return ADCS_PERIOD_US;
-  }
-  if (millis() < desat_until_ms) {
-    return ADCS_PERIOD_US;
-  }
 
   // Integrate quaternion error vector (dt = ADCS_PERIOD_US in seconds)
   static constexpr float DT = ADCS_PERIOD_US * 1.0e-6f;
@@ -623,8 +599,8 @@ uint32_t task_runADCS() {
 // TELEMETRY TASKS
 // ==========================
 
-// ADCS_TELEMETRY (60 bytes):
-//   setpoint quat (4×f) | current quat (4×f) | gyro (3×f) | integrators (3×f) | wheel_vel_y (1×f)
+// ADCS_TELEMETRY (56 bytes):
+//   setpoint quat (4×f) | current quat (4×f) | gyro (3×f) | integrators (3×f)
 uint32_t task_sendADCSTelem() {
   if (CAM::isTransmitting()) return 1000000;
   Packet p;
@@ -644,7 +620,6 @@ uint32_t task_sendADCSTelem() {
   RadioComms::packetAddFloat(&p, int_x);
   RadioComms::packetAddFloat(&p, int_y);
   RadioComms::packetAddFloat(&p, int_z);
-  RadioComms::packetAddFloat(&p, wheel_vel_y);
   RadioComms::emitPacket(&p);
   return 1000000; // 1 Hz
 }
