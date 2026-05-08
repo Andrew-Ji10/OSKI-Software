@@ -203,6 +203,7 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("\nWiFi connected, IP: ");
     Serial.println(WiFi.localIP());
+    ArduinoOTA.setHostname("flight-controller");
     ArduinoOTA.begin();
     Serial.println("OTA ready");
   } else {

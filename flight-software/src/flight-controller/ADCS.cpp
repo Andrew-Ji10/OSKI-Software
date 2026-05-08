@@ -26,10 +26,10 @@ static Adafruit_BNO055 bno = Adafruit_BNO055(55, BNO_ADDR, &Wire);
 
 static constexpr float JW_X = 3.11e-6f;
 static constexpr float JW_Y = 3.11e-6f;
-static constexpr float JW_Z = 3.11e-6f;
+static constexpr float JW_Z = 6e-6f;
 
-static constexpr float TAU_MAX = 3.11e-4f;
-static constexpr float RAMP_MAX = 100.0f;
+static constexpr float TAU_MAX = 1.0f;
+static constexpr float RAMP_MAX = 3000.0f;
 
 static float KP_X = 2.0e-4f;
 static float KP_Y = 2.0e-4f;
