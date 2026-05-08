@@ -31,13 +31,13 @@ static constexpr float JW_Z = 6e-6f;
 static constexpr float TAU_MAX = 1.0f;
 static constexpr float RAMP_MAX = 3000.0f;
 
-static float KP_X = 2.0e-4f;
-static float KP_Y = 2.0e-4f;
-static float KP_Z = 2.0e-4f;
+static float KP_X = 0.0f;
+static float KP_Y = 0.0f;
+static float KP_Z = 3.0e-3f;
 
-static float KD_X = 2.0e-4f;
-static float KD_Y = 2.0e-4f;
-static float KD_Z = 2.0e-4f;
+static float KD_X = 0.0f;
+static float KD_Y = 0.0f;
+static float KD_Z = 0.0f;
 
 static float KI_X = 0.0f;
 static float KI_Y = 0.0f;
@@ -195,7 +195,7 @@ static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
 
   if (z_enabled) {
     WHEEL_SERIAL.print("YR");
-    WHEEL_SERIAL.println(-ramp_z, 3);
+    WHEEL_SERIAL.println(ramp_z, 3);
   }
 }
 
@@ -212,9 +212,9 @@ static void zeroWheels() {
 // CMD_ADCS_SET_PID payload: axis (uint8, 0=X 1=Y 2=Z) | Kp (float) | Ki (float) | Kd (float)
 void setPIDGains(Packet packet) {
   uint8_t axis = RadioComms::packetGetUint8(&packet, 0);
-  float kp     = RadioComms::packetGetFloat(&packet, 1);
-  float ki     = RadioComms::packetGetFloat(&packet, 5);
-  float kd     = RadioComms::packetGetFloat(&packet, 9);
+  float kp     = RadioComms::packetGetFloat(&packet, 1)/1000;
+  float ki     = RadioComms::packetGetFloat(&packet, 5)/1000;
+  float kd     = RadioComms::packetGetFloat(&packet, 9)/1000;
 
   switch (axis) {
     case 0: KP_X = kp; KI_X = ki; KD_X = kd; int_x = 0.0f; break;

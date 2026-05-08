@@ -431,10 +431,12 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  setres <{valid_res}>",
             f"{_TS_PAD}  photo <count> <spacing_s>",
             f"{_TS_PAD}  adcs zero",
+            f"{_TS_PAD}  adcs enable <on|off>  (Z axis)",
             f"{_TS_PAD}  adcs enable <on|off> <on|off> <on|off>",
             f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
             f"{_TS_PAD}  adcs set current",
             f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
+            f"{_TS_PAD}  adcs vel <vel_rad_s>  (Z axis)",
             f"{_TS_PAD}  adcs vel <x|y|z> <vel_rad_s>",
             f"{_TS_PAD}  adcs poweron",
             f"{_TS_PAD}  adcs poweroff",
@@ -871,13 +873,18 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     elif sub == "enable":
                         valid = ("on", "off", "1", "0")
                         flags_raw = [p.lower() for p in parts[2:]]
-                        if len(flags_raw) != 3 or any(p not in valid for p in flags_raw):
-                            log.append([f"[{ts}] ADCS ENABLE CMD invalid — use `adcs enable <x> <y> <z>` (on/off)", 4])
-                        else:
+                        if len(flags_raw) == 1 and flags_raw[0] in valid:
+                            z_val = 1 if flags_raw[0] in ("on", "1") else 0
+                            flags = [0, 0, z_val]
+                        elif len(flags_raw) == 3 and all(p in valid for p in flags_raw):
                             flags = [1 if p in ("on", "1") else 0 for p in flags_raw]
-                            xs, ys, zs = ["ON" if f else "OFF" for f in flags]
-                            send_cmd(CMD_ADCS_ENABLE, bytes(flags),
-                                     f"ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", "adcs_enable")
+                        else:
+                            log.append([f"[{ts}] ADCS ENABLE CMD invalid — use `adcs enable <on|off>` (Z axis) or `adcs enable <x> <y> <z>`", 4])
+                            input_buf = ""
+                            continue
+                        xs, ys, zs = ["ON" if f else "OFF" for f in flags]
+                        send_cmd(CMD_ADCS_ENABLE, bytes(flags),
+                                 f"ADCS ENABLE CMD sent — X={xs} Y={ys} Z={zs} → …", "adcs_enable")
                     elif sub == "set":
                         if len(parts) == 3 and parts[2].lower() == "current":
                             if last_adcs_cur_quat is None:
@@ -927,15 +934,19 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     elif sub == "vel":
                         AXIS_MAP = {"x": 0, "y": 1, "z": 2, "0": 0, "1": 1, "2": 2}
                         try:
-                            if len(parts) != 4:
+                            if len(parts) == 3:
+                                axis_n = 2  # default Z
+                                vel = float(parts[2])
+                            elif len(parts) == 4:
+                                axis_s = parts[2].lower()
+                                if axis_s not in AXIS_MAP:
+                                    raise ValueError
+                                axis_n = AXIS_MAP[axis_s]
+                                vel = float(parts[3])
+                            else:
                                 raise ValueError
-                            axis_s = parts[2].lower()
-                            if axis_s not in AXIS_MAP:
-                                raise ValueError
-                            axis_n = AXIS_MAP[axis_s]
-                            vel = float(parts[3])
                         except ValueError:
-                            log.append([f"[{ts}] ADCS VEL CMD invalid — use `adcs vel <x|y|z> <vel_rad_s>`", 4])
+                            log.append([f"[{ts}] ADCS VEL CMD invalid — use `adcs vel <vel_rad_s>` (Z) or `adcs vel <x|y|z> <vel_rad_s>`", 4])
                         else:
                             axis_label = ("X", "Y", "Z")[axis_n]
                             send_cmd(CMD_ADCS_WHEEL_VEL, struct.pack("<Bf", axis_n, vel),
