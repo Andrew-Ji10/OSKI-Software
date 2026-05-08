@@ -33,7 +33,7 @@ static constexpr float RAMP_MAX = 3000.0f;
 
 static float KP_X = 0.0f;
 static float KP_Y = 0.0f;
-static float KP_Z = 3.0e-3f;
+static float KP_Z = 6.0e-3f;
 
 static float KD_X = 0.0f;
 static float KD_Y = 0.0f;
