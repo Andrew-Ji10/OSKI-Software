@@ -21,8 +21,8 @@
 
 #define HSK_TELEMETRY  100
 #define BMS_TELEMETRY  101
-#define ADCS_TELEMETRY 102  // setpoint quat + current quat + gyro + integrators (56 bytes)
-#define ADCS_PARAMS    103  // PID gains per axis + enables (39 bytes)
+#define ADCS_TELEMETRY 102  // setpoint quat + current quat + yaw rate/int/err/tau/ramp + mode (53 bytes)
+#define ADCS_PARAMS    103  // Z PID gains + Z enable (13 bytes)
 
 #define CAM_IMAGE_META 200  // transfer_id (uint8) + total_size (uint32) + num_chunks (uint16)
 #define CAM_IMAGE_DATA 201  // transfer_id (uint8) + seq (uint16) + total (uint16) + chunk bytes

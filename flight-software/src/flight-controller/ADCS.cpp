@@ -24,39 +24,34 @@ static Adafruit_BNO055 bno = Adafruit_BNO055(55, BNO_ADDR, &Wire);
 // CONTROL CONSTANTS
 // ==========================
 
-static constexpr float JW_X = 3.11e-6f;
-static constexpr float JW_Y = 3.11e-6f;
-static constexpr float JW_Z = 3.11e-6f;
+static constexpr float JW_Z = 6.0e-6f;
 
 static constexpr float TAU_MAX = 3.11e-4f;
 static constexpr float RAMP_MAX = 100.0f;
 
-static float KP_X = 2.0e-4f;
-static float KP_Y = 2.0e-4f;
 static float KP_Z = 2.0e-4f;
-
-static float KD_X = 2.0e-4f;
-static float KD_Y = 2.0e-4f;
 static float KD_Z = 2.0e-4f;
-
-static float KI_X = 0.0f;
-static float KI_Y = 0.0f;
 static float KI_Z = 0.0f;
 
 static constexpr float GYRO_DEADBAND = 0.20f;
-static constexpr float QERR_DEADBAND = 0.03f;
+static constexpr float ANGLE_ERR_DEADBAND = 0.06f;
+static constexpr float GYRO_FILTER_ALPHA = 0.25f;
+static constexpr float DETUMBLE_RATE_ENTER = 80.00f;
+static constexpr float DETUMBLE_RATE_EXIT = 10.0f;
 
-// Integrator windup clamp [rad·s] (quaternion error vector units)
+// Integrator windup clamp [rad*s] for angle error.
 static constexpr float I_MAX = 0.1f;
 
-// Per-axis integrator accumulators
-static float int_x = 0.0f;
-static float int_y = 0.0f;
 static float int_z = 0.0f;
 
 // Last measured attitude + gyro (updated each ADCS tick, read by telem task)
 static float last_qw = 1.0f, last_qx = 0.0f, last_qy = 0.0f, last_qz = 0.0f;
-static float last_wx = 0.0f, last_wy = 0.0f, last_wz = 0.0f;
+static float last_wz = 0.0f;
+static float filt_wz = 0.0f;
+static float last_tau_z = 0.0f;
+static float last_ramp_z = 0.0f;
+static float last_err_z = 0.0f;
+static bool detumbling = false;
 
 static constexpr uint32_t ADCS_PERIOD_US = 20000;
 
@@ -69,9 +64,6 @@ static float q_des_x = 0.0f;
 static float q_des_y = 0.0f;
 static float q_des_z = 0.0f;
 
-// Y disabled by default for now
-static bool x_enabled = false;
-static bool y_enabled = false;
 static bool z_enabled = false;
 
 // ==========================
@@ -82,6 +74,60 @@ static float clampf(float x, float lo, float hi) {
   if (x < lo) return lo;
   if (x > hi) return hi;
   return x;
+}
+
+static float lowpass(float previous, float sample) {
+  return previous + GYRO_FILTER_ALPHA * (sample - previous);
+}
+
+static bool shouldAcceptIntegratorStep(float tauBeforeStep, float deltaTauFromStep) {
+  if (fabs(deltaTauFromStep) < 1.0e-12f) return true;
+  if (fabs(tauBeforeStep) < TAU_MAX) return true;
+  return (tauBeforeStep > 0.0f && deltaTauFromStep < 0.0f) ||
+         (tauBeforeStep < 0.0f && deltaTauFromStep > 0.0f);
+}
+
+static void updateDetumbleState(float wz) {
+  float rate = z_enabled ? fabs(wz) : 0.0f;
+  if (detumbling) {
+    detumbling = rate > DETUMBLE_RATE_EXIT;
+  } else {
+    detumbling = rate > DETUMBLE_RATE_ENTER;
+  }
+}
+
+static void updateRateDampingController(float rate) {
+  int_z = 0.0f;
+  if (!z_enabled) {
+    last_tau_z = 0.0f;
+    last_ramp_z = 0.0f;
+    return;
+  }
+
+  last_tau_z = clampf(-KD_Z * rate, -TAU_MAX, TAU_MAX);
+  last_ramp_z = clampf((-last_tau_z) / JW_Z, -RAMP_MAX, RAMP_MAX);
+}
+
+static void updateYawController(float err, float rate) {
+  if (!z_enabled) {
+    int_z = 0.0f;
+    last_tau_z = 0.0f;
+    last_ramp_z = 0.0f;
+    return;
+  }
+
+  static constexpr float DT = ADCS_PERIOD_US * 1.0e-6f;
+  float baseTau = -KP_Z * err - KD_Z * rate;
+  float tauBeforeStep = baseTau - KI_Z * int_z;
+  float candidateInt = clampf(int_z + err * DT, -I_MAX, I_MAX);
+  float deltaTauFromStep = -KI_Z * (candidateInt - int_z);
+
+  if (shouldAcceptIntegratorStep(tauBeforeStep, deltaTauFromStep)) {
+    int_z = candidateInt;
+  }
+
+  last_tau_z = clampf(baseTau - KI_Z * int_z, -TAU_MAX, TAU_MAX);
+  last_ramp_z = clampf((-last_tau_z) / JW_Z, -RAMP_MAX, RAMP_MAX);
 }
 
 static void normalizeQuat(float &w, float &x, float &y, float &z) {
@@ -130,7 +176,9 @@ void setDesiredAttitude(Packet packet) {
 
   normalizeQuat(q_des_w, q_des_x, q_des_y, q_des_z);
 
-  int_x = 0.0f; int_y = 0.0f; int_z = 0.0f; // reset integrators on setpoint change
+  int_z = 0.0f;
+  filt_wz = 0.0f;
+  detumbling = false;
   Packet response;
   response.id = CMD_ADCS_SETPOINT;
   response.length = 0;
@@ -138,16 +186,17 @@ void setDesiredAttitude(Packet packet) {
 }
 
 void enableADCS(Packet packet) {
-  x_enabled = packet.data[0] != 0;
-  y_enabled = packet.data[1] != 0;
   z_enabled = packet.data[2] != 0;
+
+  if (!z_enabled) { int_z = 0.0f; filt_wz = 0.0f; last_tau_z = 0.0f; last_ramp_z = 0.0f; last_err_z = 0.0f; }
+  if (!z_enabled) detumbling = false;
 
   Packet response;
   response.id = CMD_ADCS_ENABLE;
   response.length = 0;
 
-  RadioComms::packetAddUint8(&response, x_enabled ? 1 : 0);
-  RadioComms::packetAddUint8(&response, y_enabled ? 1 : 0);
+  RadioComms::packetAddUint8(&response, 0);
+  RadioComms::packetAddUint8(&response, 0);
   RadioComms::packetAddUint8(&response, z_enabled ? 1 : 0);
 
   RadioComms::emitPacket(&response);
@@ -182,82 +231,67 @@ static void packetAddStr(Packet* p, const char* s) {
   p->length += len;
 }
 
-static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
-  if (x_enabled) {
-    WHEEL_SERIAL.print("XR");
-    WHEEL_SERIAL.println(ramp_x, 3);
-  }
-
-  if (y_enabled) {
-    WHEEL_SERIAL.print("ZR");
-    WHEEL_SERIAL.println(ramp_y, 3);
-  }
-
+static void sendADCSCommand(float ramp_z) {
   if (z_enabled) {
     WHEEL_SERIAL.print("YR");
     WHEEL_SERIAL.println(-ramp_z, 3);
   }
 }
 
-static void zeroWheels() {
-  WHEEL_SERIAL.println("XR0.000");
-  WHEEL_SERIAL.println("YR0.000");
-  WHEEL_SERIAL.println("ZR0.000");
+static void logADCSCommand() {
+  static uint32_t lastLogMs = 0;
+  uint32_t nowMs = millis();
+  if (nowMs - lastLogMs < 1000) return;
 
-  WHEEL_SERIAL.println("XV0");
-  WHEEL_SERIAL.println("YV0");
-  WHEEL_SERIAL.println("ZV0");
+  lastLogMs = nowMs;
+  Serial.printf("ADCS %s z_err=%.4f wz=%.4f tau=%.7f ramp=%.3f\n",
+                detumbling ? "detumble" : "track",
+                last_err_z, last_wz, last_tau_z, last_ramp_z);
 }
 
-// CMD_ADCS_SET_PID payload: axis (uint8, 0=X 1=Y 2=Z) | Kp (float) | Ki (float) | Kd (float)
+static void zeroWheels() {
+  WHEEL_SERIAL.println("YR0.000");
+  WHEEL_SERIAL.println("YV0");
+}
+
+// CMD_ADCS_SET_PID payload: axis (uint8, only 2=Z is used) | Kp (float) | Ki (float) | Kd (float)
 void setPIDGains(Packet packet) {
   uint8_t axis = RadioComms::packetGetUint8(&packet, 0);
   float kp     = RadioComms::packetGetFloat(&packet, 1);
   float ki     = RadioComms::packetGetFloat(&packet, 5);
   float kd     = RadioComms::packetGetFloat(&packet, 9);
 
-  switch (axis) {
-    case 0: KP_X = kp; KI_X = ki; KD_X = kd; int_x = 0.0f; break;
-    case 1: KP_Y = kp; KI_Y = ki; KD_Y = kd; int_y = 0.0f; break;
-    case 2: KP_Z = kp; KI_Z = ki; KD_Z = kd; int_z = 0.0f; break;
-    default: break;
+  if (axis == 2) {
+    KP_Z = kp;
+    KI_Z = ki;
+    KD_Z = kd;
+    int_z = 0.0f;
   }
 
-  Serial.printf("PID axis %u: Kp=%.6f Ki=%.6f Kd=%.6f\n", axis, kp, ki, kd);
+  Serial.printf("Yaw PID axis %u: Kp=%.6f Ki=%.6f Kd=%.6f\n", axis, KP_Z, KI_Z, KD_Z);
 
   Packet response;
   response.id = CMD_ADCS_SET_PID;
   response.length = 0;
-  RadioComms::packetAddUint8(&response, axis);
-  RadioComms::packetAddFloat(&response, kp);
-  RadioComms::packetAddFloat(&response, ki);
-  RadioComms::packetAddFloat(&response, kd);
+  RadioComms::packetAddUint8(&response, 2);
+  RadioComms::packetAddFloat(&response, KP_Z);
+  RadioComms::packetAddFloat(&response, KI_Z);
+  RadioComms::packetAddFloat(&response, KD_Z);
   RadioComms::emitPacket(&response);
 }
 
-// CMD_ADCS_WHEEL_VEL payload: axis (uint8, 0=X 1=Y 2=Z) | velocity (float)
+// CMD_ADCS_WHEEL_VEL payload: axis (uint8, only 2=Z is used) | velocity (float)
 void setWheelVelocity(Packet packet) {
   uint8_t axis = RadioComms::packetGetUint8(&packet, 0);
   float vel    = RadioComms::packetGetFloat(&packet, 1);
 
-  switch (axis) {
-    case 0:
-      x_enabled = false;
-      WHEEL_SERIAL.print("XV");
-      WHEEL_SERIAL.println(vel, 3);
-      break;
-    case 1:
-      y_enabled = false;
-      WHEEL_SERIAL.print("ZV");
-      WHEEL_SERIAL.println(vel, 3);
-      break;
-    case 2:
-      z_enabled = false;
-      WHEEL_SERIAL.print("YV");
-      WHEEL_SERIAL.println(vel, 3);
-      break;
-    default: return;
-  }
+  if (axis != 2) return;
+
+  z_enabled = false;
+  int_z = 0.0f; filt_wz = 0.0f; last_tau_z = 0.0f; last_ramp_z = 0.0f; last_err_z = 0.0f;
+  detumbling = false;
+  WHEEL_SERIAL.print("YV");
+  WHEEL_SERIAL.println(vel, 3);
 
   char ack[32];
   readWheelAck(ack, sizeof(ack));
@@ -265,18 +299,21 @@ void setWheelVelocity(Packet packet) {
   Packet response;
   response.id = CMD_ADCS_WHEEL_VEL;
   response.length = 0;
-  RadioComms::packetAddUint8(&response, axis);
+  RadioComms::packetAddUint8(&response, 2);
   RadioComms::packetAddFloat(&response, vel);
   packetAddStr(&response, ack);
   RadioComms::emitPacket(&response);
 }
 
 void zeroWheelsCmd(Packet packet) {
-  x_enabled = false;
-  y_enabled = false;
   z_enabled = false;
 
-  int_x = 0.0f; int_y = 0.0f; int_z = 0.0f;
+  int_z = 0.0f;
+  filt_wz = 0.0f;
+  last_tau_z = 0.0f;
+  last_ramp_z = 0.0f;
+  last_err_z = 0.0f;
+  detumbling = false;
   zeroWheels();
 
   // zeroWheels() sends YR and YV which get echoed; collect both
@@ -514,13 +551,32 @@ uint32_t task_runADCS() {
   float qz = q.z();
   normalizeQuat(qw, qx, qy, qz);
 
-  float wx = gyro.x();
-  float wy = gyro.y();
   float wz = gyro.z();
 
-  if (fabs(wx) < GYRO_DEADBAND) wx = 0.0f;
-  if (fabs(wy) < GYRO_DEADBAND) wy = 0.0f;
-  if (fabs(wz) < GYRO_DEADBAND) wz = 0.0f;
+  filt_wz = z_enabled ? lowpass(filt_wz, wz) : 0.0f;
+  wz = filt_wz;
+
+  if (!z_enabled || fabs(wz) < GYRO_DEADBAND) wz = 0.0f;
+
+  last_qw = qw; last_qx = qx; last_qy = qy; last_qz = qz;
+  last_wz = wz;
+
+  updateDetumbleState(wz);
+
+  if (detumbling) {
+    last_err_z = 0.0f;
+    updateRateDampingController(wz);
+
+    if (CAM::isTransmitting()) {
+      last_ramp_z = 0.0f;
+      sendADCSCommand(0.0f);
+    } else {
+      sendADCSCommand(last_ramp_z);
+    }
+
+    logADCSCommand();
+    return ADCS_PERIOD_US;
+  }
 
   float qdw = q_des_w;
   float qdx = q_des_x;
@@ -546,51 +602,41 @@ uint32_t task_runADCS() {
     qerr_z = -qerr_z;
   }
 
-  if (fabs(qerr_x) < QERR_DEADBAND) qerr_x = 0.0f;
-  if (fabs(qerr_y) < QERR_DEADBAND) qerr_y = 0.0f;
-  if (fabs(qerr_z) < QERR_DEADBAND) qerr_z = 0.0f;
+  float qerr_vec_norm = sqrtf(qerr_x*qerr_x + qerr_y*qerr_y + qerr_z*qerr_z);
+  float err_z = 0.0f;
 
-  bool attitudeQuiet = (qerr_x == 0.0f && qerr_y == 0.0f && qerr_z == 0.0f);
-  bool rateQuiet = (wx == 0.0f && wy == 0.0f && wz == 0.0f);
+  if (qerr_vec_norm > 1.0e-6f) {
+    float angle = 2.0f * atan2f(qerr_vec_norm, qerr_w);
+    float scale = angle / qerr_vec_norm;
+    err_z = qerr_z * scale;
+  }
+
+  if (!z_enabled || fabs(err_z) < ANGLE_ERR_DEADBAND) err_z = 0.0f;
+
+  last_err_z = err_z;
+
+  bool attitudeQuiet = err_z == 0.0f;
+  bool rateQuiet = wz == 0.0f;
 
   if (attitudeQuiet && rateQuiet) {
-    sendADCSCommand(0.0f, 0.0f, 0.0f);
+    int_z = 0.0f;
+    last_tau_z = 0.0f;
+    last_ramp_z = 0.0f;
+    sendADCSCommand(0.0f);
+    logADCSCommand();
     return ADCS_PERIOD_US;
   }
 
-
-  // Integrate quaternion error vector (dt = ADCS_PERIOD_US in seconds)
-  static constexpr float DT = ADCS_PERIOD_US * 1.0e-6f;
-  int_x = clampf(int_x + qerr_x * DT, -I_MAX, I_MAX);
-  int_y = clampf(int_y + qerr_y * DT, -I_MAX, I_MAX);
-  int_z = clampf(int_z + qerr_z * DT, -I_MAX, I_MAX);
-
-  // PID control:
-  // tau_body = -Kp * q_error_vector - Ki * integral - Kd * omega
-  float tau_x = -KP_X * qerr_x - KI_X * int_x - KD_X * wx;
-  float tau_y = -KP_Y * qerr_y - KI_Y * int_y - KD_Y * wy;
-  float tau_z = -KP_Z * qerr_z - KI_Z * int_z - KD_Z * wz;
-
-  tau_x = clampf(tau_x, -TAU_MAX, TAU_MAX);
-  tau_y = clampf(tau_y, -TAU_MAX, TAU_MAX);
-  tau_z = clampf(tau_z, -TAU_MAX, TAU_MAX);
-
-  float ramp_x = (-tau_x) / JW_X;
-  float ramp_y = (-tau_y) / JW_Y;
-  float ramp_z = (-tau_z) / JW_Z;
-
-  ramp_x = clampf(ramp_x, -RAMP_MAX, RAMP_MAX);
-  ramp_y = clampf(ramp_y, -RAMP_MAX, RAMP_MAX);
-  ramp_z = clampf(ramp_z, -RAMP_MAX, RAMP_MAX);
+  updateYawController(err_z, wz);
 
   if (CAM::isTransmitting()) {
-    sendADCSCommand(0.0f, 0.0f, 0.0f);
+    last_ramp_z = 0.0f;
+    sendADCSCommand(0.0f);
   } else {
-    sendADCSCommand(ramp_x, ramp_y, ramp_z);
+    sendADCSCommand(last_ramp_z);
   }
 
-  last_qw = qw; last_qx = qx; last_qy = qy; last_qz = qz;
-  last_wx = wx; last_wy = wy; last_wz = wz;
+  logADCSCommand();
 
   return ADCS_PERIOD_US;
 }
@@ -599,8 +645,9 @@ uint32_t task_runADCS() {
 // TELEMETRY TASKS
 // ==========================
 
-// ADCS_TELEMETRY (56 bytes):
-//   setpoint quat (4×f) | current quat (4×f) | gyro (3×f) | integrators (3×f)
+// ADCS_TELEMETRY (53 bytes):
+//   setpoint quat (4xf) | current quat (4xf) | wz | int_z |
+//   z angle error | z torque command | z ramp command | mode (uint8, 0=track 1=detumble)
 uint32_t task_sendADCSTelem() {
   if (CAM::isTransmitting()) return 1000000;
   Packet p;
@@ -614,34 +661,26 @@ uint32_t task_sendADCSTelem() {
   RadioComms::packetAddFloat(&p, last_qx);
   RadioComms::packetAddFloat(&p, last_qy);
   RadioComms::packetAddFloat(&p, last_qz);
-  RadioComms::packetAddFloat(&p, last_wx);
-  RadioComms::packetAddFloat(&p, last_wy);
   RadioComms::packetAddFloat(&p, last_wz);
-  RadioComms::packetAddFloat(&p, int_x);
-  RadioComms::packetAddFloat(&p, int_y);
   RadioComms::packetAddFloat(&p, int_z);
+  RadioComms::packetAddFloat(&p, last_err_z);
+  RadioComms::packetAddFloat(&p, last_tau_z);
+  RadioComms::packetAddFloat(&p, last_ramp_z);
+  RadioComms::packetAddUint8(&p, detumbling ? 1 : 0);
   RadioComms::emitPacket(&p);
   return 1000000; // 1 Hz
 }
 
-// ADCS_PARAMS (39 bytes):
-//   Kp/Ki/Kd per axis (9×f) | x/y/z enabled (3×uint8)
+// ADCS_PARAMS (13 bytes):
+//   Z Kp/Ki/Kd (3xf) | z enabled (uint8)
 uint32_t task_sendADCSParams() {
   if (CAM::isTransmitting()) return 5000000;
   Packet p;
   p.id = ADCS_PARAMS;
   p.length = 0;
-  RadioComms::packetAddFloat(&p, KP_X);
-  RadioComms::packetAddFloat(&p, KI_X);
-  RadioComms::packetAddFloat(&p, KD_X);
-  RadioComms::packetAddFloat(&p, KP_Y);
-  RadioComms::packetAddFloat(&p, KI_Y);
-  RadioComms::packetAddFloat(&p, KD_Y);
   RadioComms::packetAddFloat(&p, KP_Z);
   RadioComms::packetAddFloat(&p, KI_Z);
   RadioComms::packetAddFloat(&p, KD_Z);
-  RadioComms::packetAddUint8(&p, x_enabled ? 1 : 0);
-  RadioComms::packetAddUint8(&p, y_enabled ? 1 : 0);
   RadioComms::packetAddUint8(&p, z_enabled ? 1 : 0);
   RadioComms::emitPacket(&p);
   return 5000000; // 0.2 Hz
