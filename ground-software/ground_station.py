@@ -263,7 +263,7 @@ def fmt_packet(pkt_id, raw, rssi, snr):
 _TS_PAD = " " * 11  # aligns continuation lines under content after "[HH:MM:SS] "
 
 def fmt_adcs_telem(ts, raw, rssi, snr):
-    v = struct.unpack_from("<14f", raw, 0)
+    v = struct.unpack_from("<15f", raw, 0)
     sp_r,  sp_p,  sp_y  = quat_to_euler(v[0], v[1], v[2], v[3])
     cur_r, cur_p, cur_y = quat_to_euler(v[4], v[5], v[6], v[7])
     return [
@@ -272,6 +272,7 @@ def fmt_adcs_telem(ts, raw, rssi, snr):
         f"{_TS_PAD}  current   roll={cur_r:+8.3f}°  pitch={cur_p:+8.3f}°  yaw={cur_y:+8.3f}°",
         f"{_TS_PAD}  gyro r/s  x={v[8]:+.4f} y={v[9]:+.4f} z={v[10]:+.4f}",
         f"{_TS_PAD}  integral  x={v[11]:+.6f} y={v[12]:+.6f} z={v[13]:+.6f}",
+        f"{_TS_PAD}  wheel vel y={v[14]:+.3f} rad/s",
     ]
 
 def fmt_adcs_params(ts, raw, rssi, snr):
@@ -313,8 +314,8 @@ def influx_fields(pkt_id, raw):
             fields["uptime_s"] = int(struct.unpack_from("<I", raw, 22)[0])
             fields["reset_reason"] = int(raw[26])
         return fields
-    if pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
-        v = struct.unpack_from("<14f", raw, 0)
+    if pkt_id == ADCS_TELEMETRY and len(raw) >= 60:
+        v = struct.unpack_from("<15f", raw, 0)
         des_roll, des_pitch, des_yaw = quat_to_euler(v[0], v[1], v[2], v[3])
         cur_roll, cur_pitch, cur_yaw = quat_to_euler(v[4], v[5], v[6], v[7])
         return {
@@ -324,6 +325,7 @@ def influx_fields(pkt_id, raw):
             "roll":   cur_roll, "pitch": cur_pitch, "yaw": cur_yaw,
             "wx":     v[8],  "wy":     v[9],  "wz":     v[10],
             "int_x":  v[11], "int_y":  v[12], "int_z":  v[13],
+            "wheel_vel_y": v[14],
         }
     if pkt_id == ADCS_PARAMS and len(raw) >= 39:
         v = struct.unpack_from("<9f", raw, 0)
@@ -636,9 +638,9 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                                 log[idx][1] = 5
                             else:
                                 log.append([fmt_packet(pkt_id, raw, rssi, snr), 1])
-                        elif pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
+                        elif pkt_id == ADCS_TELEMETRY and len(raw) >= 60:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            v = struct.unpack_from("<14f", raw, 0)
+                            v = struct.unpack_from("<15f", raw, 0)
                             last_adcs_cur_quat = (v[4], v[5], v[6], v[7])
                             for line in fmt_adcs_telem(ts, raw, rssi, snr):
                                 log.append([line, 1])
