@@ -200,7 +200,7 @@ static void sendADCSCommand(float ramp_x, float ramp_y, float ramp_z) {
 
   if (z_enabled) {
     WHEEL_SERIAL.print("YR");
-    WHEEL_SERIAL.println(-ramp_z, 3);
+    WHEEL_SERIAL.println(ramp_z, 3);
   }
 }
 
@@ -607,8 +607,8 @@ uint32_t task_runADCS() {
 // TELEMETRY TASKS
 // ==========================
 
-// ADCS_TELEMETRY (68 bytes):
-//   setpoint quat (4xf) | current quat (4xf) | gyro (3xf) | integrators (3xf) | Z PID errors p,d,i (3xf)
+// ADCS_TELEMETRY (52 bytes):
+//   setpoint quat (4xf) | current quat (4xf) | gyro (3xf) | Z p_err (f) | Z i_err (f)
 uint32_t task_sendADCSTelem() {
   if (CAM::isTransmitting()) return 1000000;
   Packet p;
