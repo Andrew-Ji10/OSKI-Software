@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <ArduinoOTA.h>
 #include "Common.h"
 #include "BMS.h"
 #include "RadioComms.h"
@@ -51,6 +53,11 @@ uint32_t task_blinkLEDs() {
     return 1000 * 1000; // this task will run every second
 }
 
+uint32_t task_otaHandle() {
+  ArduinoOTA.handle();
+  return 50 * 1000; // 50 ms
+}
+
 uint32_t task_helloWorld() {
   Serial.println("Hello World!");
   return 1000 * 1000; // this task will run every second
@@ -85,7 +92,8 @@ Task taskTable[] = {
   {ADCS::task_runADCS, 0, true},
   {ADCS::task_sendADCSTelem, 0, true},
   {ADCS::task_sendADCSParams, 0, true},
-  {CAM::task_processCamera, 0, true}
+  {CAM::task_processCamera, 0, true},
+  {task_otaHandle, 0, true}
 };
 
 #define TASK_COUNT (sizeof(taskTable) / sizeof (struct Task))
@@ -97,7 +105,8 @@ enum TaskIndex : uint32_t {
   TASK_ADCS_RUN,
   TASK_ADCS_TELEM,
   TASK_ADCS_PARAMS,
-  TASK_CAM_PROCESS
+  TASK_CAM_PROCESS,
+  TASK_OTA_HANDLE
 };
 
 static void scheduleInitialTaskOffsets(uint32_t nowUs) {
@@ -108,6 +117,7 @@ static void scheduleInitialTaskOffsets(uint32_t nowUs) {
   taskTable[TASK_ADCS_TELEM].nexttime = nowUs + 100000;
   taskTable[TASK_ADCS_PARAMS].nexttime = nowUs + 2500000;
   taskTable[TASK_CAM_PROCESS].nexttime = nowUs;
+  taskTable[TASK_OTA_HANDLE].nexttime = nowUs + 5000000; // start after 5s to let init settle
 }
 
 /*
@@ -181,6 +191,24 @@ void setup() {
 
   Serial.begin(115200);
   initLEDs();
+
+  WiFi.begin("bean", "whatsupdog");
+  Serial.print("Connecting to WiFi");
+  uint32_t wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 10000) {
+    digitalWrite(LED1, !digitalRead(LED1));
+    delay(100);
+    Serial.print(".");
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("\nWiFi connected, IP: ");
+    Serial.println(WiFi.localIP());
+    ArduinoOTA.begin();
+    Serial.println("OTA ready");
+  } else {
+    Serial.println("\nWiFi not found, OTA unavailable");
+  }
+
   RadioComms::init();
   BMS::init();
   CAM::init();

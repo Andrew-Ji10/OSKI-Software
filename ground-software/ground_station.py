@@ -315,9 +315,13 @@ def influx_fields(pkt_id, raw):
         return fields
     if pkt_id == ADCS_TELEMETRY and len(raw) >= 56:
         v = struct.unpack_from("<14f", raw, 0)
+        des_roll, des_pitch, des_yaw = quat_to_euler(v[0], v[1], v[2], v[3])
+        cur_roll, cur_pitch, cur_yaw = quat_to_euler(v[4], v[5], v[6], v[7])
         return {
             "des_qw": v[0],  "des_qx": v[1],  "des_qy": v[2],  "des_qz": v[3],
+            "des_roll": des_roll, "des_pitch": des_pitch, "des_yaw": des_yaw,
             "qw":     v[4],  "qx":     v[5],  "qy":     v[6],  "qz":     v[7],
+            "roll":   cur_roll, "pitch": cur_pitch, "yaw": cur_yaw,
             "wx":     v[8],  "wy":     v[9],  "wz":     v[10],
             "int_x":  v[11], "int_y":  v[12], "int_z":  v[13],
         }
