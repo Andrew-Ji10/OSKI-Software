@@ -435,6 +435,7 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
             f"{_TS_PAD}  adcs enable <on|off> <on|off> <on|off>",
             f"{_TS_PAD}  adcs set <roll_deg> <pitch_deg> <yaw_deg>",
             f"{_TS_PAD}  adcs set current",
+            f"{_TS_PAD}  adcs pid <kp> <ki> <kd>  (Z axis)",
             f"{_TS_PAD}  adcs pid <x|y|z> <kp> <ki> <kd>",
             f"{_TS_PAD}  adcs vel <vel_rad_s>  (Z axis)",
             f"{_TS_PAD}  adcs vel <x|y|z> <vel_rad_s>",
@@ -914,17 +915,23 @@ def run_ui(stdscr, initial_port, write_api, influx_status):
                     elif sub == "pid":
                         AXIS_MAP = {"x": 0, "y": 1, "z": 2, "0": 0, "1": 1, "2": 2}
                         try:
-                            if len(parts) != 6:
+                            if len(parts) == 5:
+                                axis_n = 2  # default Z
+                                kp = float(parts[2])
+                                ki = float(parts[3])
+                                kd = float(parts[4])
+                            elif len(parts) == 6:
+                                axis_s = parts[2].lower()
+                                if axis_s not in AXIS_MAP:
+                                    raise ValueError
+                                axis_n = AXIS_MAP[axis_s]
+                                kp = float(parts[3])
+                                ki = float(parts[4])
+                                kd = float(parts[5])
+                            else:
                                 raise ValueError
-                            axis_s = parts[2].lower()
-                            if axis_s not in AXIS_MAP:
-                                raise ValueError
-                            axis_n = AXIS_MAP[axis_s]
-                            kp = float(parts[3])
-                            ki = float(parts[4])
-                            kd = float(parts[5])
                         except ValueError:
-                            log.append([f"[{ts}] ADCS PID CMD invalid — use `adcs pid <x|y|z> <kp> <ki> <kd>`", 4])
+                            log.append([f"[{ts}] ADCS PID CMD invalid — use `adcs pid <kp> <ki> <kd>` (Z) or `adcs pid <x|y|z> <kp> <ki> <kd>`", 4])
                         else:
                             axis_label = ("X", "Y", "Z")[axis_n]
                             send_cmd(CMD_ADCS_SET_PID, struct.pack("<Bfff", axis_n, kp, ki, kd),
